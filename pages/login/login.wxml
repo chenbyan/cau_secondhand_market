@@ -1,0 +1,15 @@
+<view class="login-page flex-col">
+  <view class="spacer" />
+  <view class="logo-area flex-col flex-center">
+    <view class="logo-circle flex-center">校</view>
+    <text class="app-name">校园二手交易平台</text>
+  </view>
+  <view class="btn-wrap">
+    <button class="btn-primary login-btn" loading="{{loading}}" bindtap="onWxLogin">
+      微信一键登录
+    </button>
+  </view>
+  <view class="agreement text-muted text-center">
+    登录即表示同意《用户服务协议》
+  </view>
+</view>

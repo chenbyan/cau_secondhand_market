@@ -1,0 +1,42 @@
+<view class="orders-page">
+  <view class="tabs flex-row">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab {{activeTab === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onTab"
+    >{{item.name}}</view>
+  </view>
+
+  <scroll-view
+    scroll-y
+    class="list-wrap"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh"
+    bindscrolltolower="onLoadMore"
+  >
+    <view wx:if="{{loading && !orders.length}}" class="state text-muted text-center">加载中...</view>
+    <block wx:for="{{orders}}" wx:key="objectId">
+      <view class="order-card card" data-id="{{item.objectId}}" bindtap="onOpenDetail">
+        <view class="flex-row">
+          <image class="thumb" src="{{item.itemImage || placeholder}}" mode="aspectFill" />
+          <view class="info flex-col">
+            <text class="title">{{item.itemTitle || '商品'}}</text>
+            <text class="price">¥ {{item.price}}</text>
+            <view class="flex-row bottom-row">
+              <text class="tag-info">{{item.statusLabel}}</text>
+              <text class="text-muted time">{{item.createdAtText}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{!loading && !orders.length}}" class="empty flex-col flex-center">
+      <text class="empty-icon">📭</text>
+      <text class="text-muted">暂无订单</text>
+    </view>
+    <view wx:if="{{loadingMore}}" class="state text-muted text-center">加载更多...</view>
+  </scroll-view>
+</view>

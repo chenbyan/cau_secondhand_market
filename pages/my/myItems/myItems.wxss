@@ -1,0 +1,101 @@
+.items-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.tabs {
+  background: #ffffff;
+  border-bottom: 1rpx solid #eee;
+  flex-wrap: wrap;
+}
+
+.tab {
+  flex: 1;
+  min-width: 20%;
+  text-align: center;
+  padding: 20rpx 4rpx;
+  font-size: 22rpx;
+  color: #666666;
+}
+
+.tab.active {
+  color: #2d5a8e;
+  font-weight: 600;
+  border-bottom: 4rpx solid #2d5a8e;
+}
+
+.list-wrap {
+  flex: 1;
+  height: 0;
+}
+
+.item-card {
+  margin: 16rpx 24rpx;
+}
+
+.thumb {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 12rpx;
+  margin-right: 20rpx;
+  background: #f0f0f0;
+}
+
+.info {
+  flex: 1;
+}
+
+.title {
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.price {
+  color: #c45b3e;
+  margin-top: 8rpx;
+}
+
+.time {
+  font-size: 22rpx;
+  margin-top: 8rpx;
+}
+
+.status-tag {
+  margin-top: 8rpx;
+  align-self: flex-start;
+}
+
+.actions {
+  margin-top: 16rpx;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+
+.mini {
+  margin: 0;
+}
+
+.mini.danger {
+  background: #fdecea;
+  color: #c45b3e;
+  border: none;
+}
+
+.state {
+  padding: 40rpx;
+}
+
+.empty {
+  padding: 100rpx 0;
+}
+
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 16rpx;
+}
+
+.empty-btn {
+  margin-top: 32rpx;
+  width: 280rpx;
+}

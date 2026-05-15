@@ -1,0 +1,33 @@
+<view class="setting-page">
+  <view class="card form-card">
+    <view class="field flex-row" bindtap="onChooseAvatar">
+      <text class="label">头像</text>
+      <image class="preview" src="{{form.avatarUrl || defaultAvatar}}" mode="aspectFill" />
+    </view>
+    <view class="field flex-col">
+      <text class="label">昵称</text>
+      <input class="input" maxlength="20" placeholder="2-20 个字符" value="{{form.nickName}}" bindinput="onNick" />
+    </view>
+    <view class="field flex-col">
+      <text class="label">联系电话</text>
+      <input class="input" type="number" maxlength="11" placeholder="11 位手机号" value="{{form.phone}}" bindinput="onPhone" />
+    </view>
+    <view class="field flex-col">
+      <text class="label">微信号</text>
+      <input class="input" placeholder="选填" value="{{form.wechatId}}" bindinput="onWechat" />
+    </view>
+    <view class="field flex-col">
+      <text class="label">校区</text>
+      <picker mode="selector" range="{{campuses}}" value="{{campusIndex}}" bindchange="onCampusChange">
+        <view class="picker-val">{{form.campus || '请选择校区'}}</view>
+      </picker>
+    </view>
+    <view class="field flex-col">
+      <text class="label">宿舍楼栋</text>
+      <input class="input" placeholder="例如：3号楼 501" value="{{form.dormitory}}" bindinput="onDorm" />
+    </view>
+  </view>
+  <view class="save-wrap">
+    <button class="btn-primary save-btn" loading="{{saving}}" bindtap="onSave">保存</button>
+  </view>
+</view>

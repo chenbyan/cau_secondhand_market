@@ -1,0 +1,71 @@
+.verify-page {
+  min-height: 100vh;
+}
+
+.hero {
+  padding: 48rpx 32rpx 24rpx;
+}
+
+.hero-icon {
+  font-size: 80rpx;
+  margin-bottom: 16rpx;
+}
+
+.hero-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.sub {
+  max-width: 560rpx;
+}
+
+.form-card {
+  margin: 24rpx;
+}
+
+.field {
+  margin-bottom: 24rpx;
+}
+
+.label {
+  color: #666666;
+  margin-bottom: 12rpx;
+  font-size: 26rpx;
+}
+
+.input {
+  padding: 20rpx;
+  background: #f7f7f7;
+  border-radius: 8rpx;
+}
+
+.code-row {
+  align-items: center;
+  gap: 16rpx;
+}
+
+.code-input {
+  flex: 1;
+}
+
+.code-btn {
+  font-size: 24rpx;
+  padding: 0 20rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  background: #2d5a8e;
+  color: #fff;
+  border-radius: 8rpx;
+}
+
+.code-btn.disabled {
+  background: #cccccc;
+  color: #666666;
+}
+
+.submit-btn {
+  width: 100%;
+  margin-top: 16rpx;
+}

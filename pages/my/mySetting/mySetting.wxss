@@ -1,0 +1,56 @@
+.setting-page {
+  padding-bottom: 48rpx;
+}
+
+.form-card {
+  margin-top: 24rpx;
+}
+
+.field {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+  align-items: center;
+}
+
+.field.flex-col {
+  align-items: stretch;
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.label {
+  width: 180rpx;
+  color: #666666;
+  font-size: 28rpx;
+}
+
+.preview {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  margin-left: auto;
+}
+
+.input {
+  margin-top: 12rpx;
+  padding: 16rpx;
+  background: #f7f7f7;
+  border-radius: 8rpx;
+}
+
+.picker-val {
+  margin-top: 12rpx;
+  padding: 16rpx;
+  background: #f7f7f7;
+  border-radius: 8rpx;
+}
+
+.save-wrap {
+  margin: 40rpx 24rpx;
+}
+
+.save-btn {
+  width: 100%;
+}

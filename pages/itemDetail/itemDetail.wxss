@@ -1,0 +1,5 @@
+.placeholder {
+  padding: 48rpx;
+  text-align: center;
+  color: #999999;
+}

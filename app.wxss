@@ -1,0 +1,114 @@
+/** 全局样式变量（小程序 WXSS 无原生变量，用注释约定主色） */
+/* 主色 #2d5a8e 辅色 #c45b3e 背景 #f5f5f5 */
+
+page {
+  background-color: #f5f5f5;
+  font-size: 28rpx;
+  color: #333333;
+  box-sizing: border-box;
+}
+
+.flex-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: #999999;
+  font-size: 24rpx;
+}
+
+.text-primary {
+  color: #2d5a8e;
+}
+
+.btn-primary {
+  background-color: #2d5a8e;
+  color: #ffffff;
+  border-radius: 12rpx;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+  border: none;
+}
+
+.btn-primary:active {
+  opacity: 0.85;
+}
+
+.btn-outline {
+  background-color: #ffffff;
+  color: #2d5a8e;
+  border: 2rpx solid #2d5a8e;
+  border-radius: 12rpx;
+  padding: 22rpx 32rpx;
+  font-size: 30rpx;
+}
+
+.btn-danger {
+  background-color: #c45b3e;
+  color: #ffffff;
+  border-radius: 12rpx;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+  border: none;
+}
+
+.card {
+  background-color: #ffffff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin: 24rpx;
+  box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.06);
+}
+
+.tag-success {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: #1a7f37;
+  background: #e6f7ea;
+}
+
+.tag-warning {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: #ad6800;
+  background: #fff7e6;
+}
+
+.tag-danger {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: #c45b3e;
+  background: #fdecea;
+}
+
+.tag-info {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: #2d5a8e;
+  background: #e8f0f8;
+}

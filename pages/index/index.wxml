@@ -1,0 +1,7 @@
+<view class="page-index">
+  <view class="title">校园二手交易平台</view>
+  <view class="welcome text-muted">
+    欢迎来到校园二手交易，在这里发现与分享闲置好物。
+  </view>
+  <!-- TODO: 首页商品列表、搜索、分类等功能由其他同学实现 -->
+</view>

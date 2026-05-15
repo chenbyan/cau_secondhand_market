@@ -1,0 +1,52 @@
+.about-page {
+  padding: 48rpx 32rpx 80rpx;
+  min-height: 100vh;
+}
+
+.logo-circle {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  background: #2d5a8e;
+  color: #ffffff;
+  font-size: 56rpx;
+  font-weight: 600;
+  margin-bottom: 24rpx;
+}
+
+.name {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.ver {
+  margin-top: 8rpx;
+  margin-bottom: 32rpx;
+}
+
+.intro,
+.team,
+.contact {
+  width: 100%;
+  margin-top: 24rpx;
+  align-self: stretch;
+}
+
+.p {
+  display: block;
+  line-height: 1.7;
+  margin-bottom: 16rpx;
+  color: #555555;
+  font-size: 26rpx;
+}
+
+.section-title {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.line {
+  display: block;
+  font-size: 26rpx;
+}

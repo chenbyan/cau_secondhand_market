@@ -1,0 +1,41 @@
+.login-page {
+  min-height: 100vh;
+  background: #ffffff;
+  padding: 0 64rpx;
+}
+
+.spacer {
+  height: 120rpx;
+}
+
+.logo-circle {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  background: #2d5a8e;
+  color: #ffffff;
+  font-size: 64rpx;
+  font-weight: 600;
+  margin-bottom: 32rpx;
+}
+
+.app-name {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.btn-wrap {
+  margin-top: 120rpx;
+}
+
+.login-btn {
+  width: 100%;
+}
+
+.agreement {
+  margin-top: auto;
+  padding-bottom: 64rpx;
+  padding-top: 80rpx;
+  font-size: 22rpx;
+}

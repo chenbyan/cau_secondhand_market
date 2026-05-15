@@ -1,0 +1,84 @@
+<view class="my-page">
+  <view class="user-card card" bindtap="onUserCardTap">
+    <block wx:if="{{loggedIn}}">
+      <view class="flex-row user-row">
+        <image class="avatar" src="{{user.avatarUrl || defaultAvatar}}" mode="aspectFill" />
+        <view class="user-meta flex-col">
+          <text class="nickname">{{user.nickName || '未设置昵称'}}</text>
+          <view class="flex-row tags-row">
+            <view
+              wx:if="{{user.campusVerified}}"
+              class="tag-success"
+            >已认证</view>
+            <view
+              wx:else
+              class="tag-info campus-tap"
+              catchtap="onCampusTap"
+            >未认证</view>
+            <text class="credit text-muted">信用分 {{user.creditScore != null ? user.creditScore : 100}}</text>
+          </view>
+        </view>
+      </view>
+    </block>
+    <block wx:else>
+      <view class="flex-row user-row">
+        <image class="avatar" src="{{defaultAvatar}}" mode="aspectFill" />
+        <view class="user-meta flex-col">
+          <text class="nickname">点击登录</text>
+          <text class="text-muted">登录后管理发布与订单</text>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view class="menu card">
+    <view class="cell flex-row" bindtap="goMyItems">
+      <text class="cell-icon">📦</text>
+      <text class="cell-text">我的发布</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view class="cell flex-row" bindtap="goMyCart">
+      <text class="cell-icon">🛒</text>
+      <text class="cell-text">我的购物车</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view class="cell flex-row" bindtap="goOrdersBuy">
+      <text class="cell-icon">📋</text>
+      <text class="cell-text">我买到的</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view class="cell flex-row" bindtap="goOrdersSell">
+      <text class="cell-icon">📋</text>
+      <text class="cell-text">我卖出的</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view class="cell flex-row" bindtap="goSetting">
+      <text class="cell-icon">⚙️</text>
+      <text class="cell-text">个人设置</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view
+      wx:if="{{!user.campusVerified}}"
+      class="cell flex-row"
+      bindtap="goCampus"
+    >
+      <text class="cell-icon">🎓</text>
+      <text class="cell-text">校园认证</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view wx:else class="cell flex-row disabled">
+      <text class="cell-icon">🎓</text>
+      <text class="cell-text">校园认证（已认证）</text>
+      <text class="cell-arrow">›</text>
+    </view>
+    <view class="cell flex-row" bindtap="goAbout">
+      <text class="cell-icon">ℹ️</text>
+      <text class="cell-text">关于我们</text>
+      <text class="cell-arrow">›</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loggedIn}}" class="logout-wrap">
+    <button class="btn-outline logout-btn" bindtap="onLogout">退出登录</button>
+  </view>
+</view>

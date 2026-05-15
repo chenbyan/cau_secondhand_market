@@ -1,0 +1,21 @@
+<view class="about-page flex-col flex-center">
+  <view class="logo-circle flex-center">校</view>
+  <text class="name">校园二手交易平台</text>
+  <text class="ver text-muted">v1.0.0</text>
+  <view class="card intro">
+    <text class="p">
+      本小程序面向高校师生，提供闲置物品发布、浏览与沟通撮合能力，倡导绿色消费与资源循环利用。
+    </text>
+    <text class="p">
+      当前版本不包含在线支付与资金托管，交易细节请买卖双方自行确认并注意安全。
+    </text>
+  </view>
+  <view class="card team">
+    <text class="section-title">开发团队</text>
+    <text class="text-muted line">校园二手平台课程设计小组</text>
+  </view>
+  <view class="card contact">
+    <text class="section-title">反馈联系</text>
+    <text class="text-muted line">邮箱：feedback@example.edu.cn</text>
+  </view>
+</view>

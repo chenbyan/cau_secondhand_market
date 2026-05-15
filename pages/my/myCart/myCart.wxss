@@ -1,0 +1,79 @@
+.cart-page {
+  height: 100vh;
+}
+
+.list-wrap {
+  height: 100%;
+}
+
+.swipe-wrap {
+  position: relative;
+  margin: 16rpx 24rpx;
+  overflow: hidden;
+  border-radius: 16rpx;
+  background: #ffffff;
+}
+
+.swipe-inner {
+  position: relative;
+  z-index: 2;
+  background: #ffffff;
+  padding: 20rpx;
+  transition: transform 0.15s ease-out;
+}
+
+.del-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 160rpx;
+  background: #c45b3e;
+  color: #ffffff;
+  font-size: 28rpx;
+  z-index: 1;
+}
+
+.thumb {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 12rpx;
+  margin-right: 20rpx;
+  background: #f0f0f0;
+}
+
+.info {
+  flex: 1;
+}
+
+.title {
+  font-size: 30rpx;
+}
+
+.price {
+  color: #c45b3e;
+  margin-top: 8rpx;
+}
+
+.seller {
+  font-size: 22rpx;
+  margin-top: 8rpx;
+}
+
+.state {
+  padding: 40rpx;
+}
+
+.empty {
+  padding: 120rpx 0;
+}
+
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 16rpx;
+}
+
+.empty-btn {
+  margin-top: 32rpx;
+  width: 280rpx;
+}

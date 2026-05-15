@@ -1,0 +1,44 @@
+<view class="cart-page">
+  <scroll-view
+    scroll-y
+    class="list-wrap"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh"
+    bindscrolltolower="onLoadMore"
+  >
+    <view wx:if="{{loading && !list.length}}" class="state text-muted text-center">加载中...</view>
+    <block wx:for="{{list}}" wx:key="objectId">
+      <view class="swipe-wrap">
+        <view
+          class="swipe-inner flex-row"
+          style="transform: translateX({{item.offsetX}}px);"
+          data-index="{{index}}"
+          data-item-id="{{item.itemId}}"
+          bindtouchstart="onTouchStart"
+          bindtouchmove="onTouchMove"
+          bindtouchend="onTouchEnd"
+          bindtap="onOpenItem"
+        >
+          <image class="thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
+          <view class="info flex-col">
+            <text class="title">{{item.title}}</text>
+            <text class="price">¥ {{item.price}}</text>
+            <text class="text-muted seller">卖家 {{item.sellerName}}</text>
+          </view>
+        </view>
+        <view
+          class="del-btn flex-center"
+          data-id="{{item.objectId}}"
+          catchtap="onRemove"
+        >删除</view>
+      </view>
+    </block>
+    <view wx:if="{{!loading && !list.length}}" class="empty flex-col flex-center">
+      <text class="empty-icon">🛒</text>
+      <text class="text-muted">购物车为空</text>
+      <button class="btn-primary empty-btn" bindtap="goIndex">去逛逛</button>
+    </view>
+    <view wx:if="{{loadingMore}}" class="state text-muted text-center">加载更多...</view>
+  </scroll-view>
+</view>

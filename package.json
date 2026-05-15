@@ -1,0 +1,9 @@
+{
+  "name": "secondhand-miniprogram",
+  "version": "1.0.0",
+  "description": "校园二手交易平台微信小程序",
+  "main": "app.js",
+  "dependencies": {
+    "hydrogen-js-sdk": "^2.2.1"
+  }
+}

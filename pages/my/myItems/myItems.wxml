@@ -1,0 +1,51 @@
+<view class="items-page">
+  <view class="tabs flex-row">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab {{activeTab === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onTab"
+    >{{item.name}}</view>
+  </view>
+
+  <scroll-view
+    scroll-y
+    class="list-wrap"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh"
+    bindscrolltolower="onLoadMore"
+  >
+    <view wx:if="{{loading && !items.length}}" class="state text-muted text-center">加载中...</view>
+    <block wx:for="{{items}}" wx:key="objectId">
+      <view class="item-card card">
+        <view class="flex-row" data-id="{{item.objectId}}" bindtap="onOpenDetail">
+          <image class="thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
+          <view class="info flex-col">
+            <text class="title">{{item.title}}</text>
+            <text class="price">¥ {{item.price}}</text>
+            <text class="text-muted time">{{item.createdAtText}}</text>
+            <text class="tag-info status-tag">{{item.statusLabel}}</text>
+          </view>
+        </view>
+        <view class="actions flex-row">
+          <block wx:if="{{item.status === 'ON_SALE'}}">
+            <button size="mini" class="btn-outline mini" data-item="{{item}}" catchtap="onEdit">编辑</button>
+            <button size="mini" class="btn-outline mini" data-id="{{item.objectId}}" catchtap="onOffline">下架</button>
+          </block>
+          <block wx:if="{{item.status === 'OFFLINE'}}">
+            <button size="mini" class="btn-outline mini" data-id="{{item.objectId}}" catchtap="onOnline">重新上架</button>
+            <button size="mini" class="btn-danger mini danger" data-id="{{item.objectId}}" catchtap="onDelete">删除</button>
+          </block>
+        </view>
+      </view>
+    </block>
+    <view wx:if="{{!loading && !items.length}}" class="empty flex-col flex-center">
+      <text class="empty-icon">📦</text>
+      <text class="text-muted">暂无发布的商品</text>
+      <button class="btn-primary empty-btn" bindtap="goPublish">去发布</button>
+    </view>
+    <view wx:if="{{loadingMore}}" class="state text-muted text-center">加载更多...</view>
+  </scroll-view>
+</view>

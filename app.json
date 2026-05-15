@@ -1,0 +1,44 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/login/login",
+    "pages/my/my",
+    "pages/my/mySetting/mySetting",
+    "pages/my/campusVerify/campusVerify",
+    "pages/my/myOrders/myOrders",
+    "pages/my/myItems/myItems",
+    "pages/my/myCart/myCart",
+    "pages/my/about/about",
+    "pages/orderDetail/orderDetail",
+    "pages/itemDetail/itemDetail",
+    "pages/itemPublish/itemPublish"
+  ],
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#2d5a8e",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "static/tab/home.png",
+        "selectedIconPath": "static/tab/home-active.png"
+      },
+      {
+        "pagePath": "pages/my/my",
+        "text": "我的",
+        "iconPath": "static/tab/my.png",
+        "selectedIconPath": "static/tab/my-active.png"
+      }
+    ]
+  },
+  "window": {
+    "navigationBarBackgroundColor": "#2d5a8e",
+    "navigationBarTitleText": "校园二手交易",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f5f5"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
