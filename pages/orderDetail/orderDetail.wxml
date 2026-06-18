@@ -1,1 +1,167 @@
-<view class="placeholder">订单详情（其他同学实现）</view>
+<view class="order-detail-page">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
+  <view class="status-bar flex-row">
+    <text class="status-tag tag-{{statusClass}}">{{statusLabel}}</text>
+  </view>
+
+  <!-- 买家端提醒 -->
+  <view class="remind-box" wx:if="{{showRemind && statusClass === 'PENDING_CONFIRM'}}">
+    <text class="remind-text">⏳ 等待卖家确认订单，24小时内未确认将自动确认{{countdown ? '（剩余 ' + countdown + '）' : ''}}</text>
+  </view>
+  <view class="remind-box" wx:elif="{{showRemind && statusClass === 'SHIPPED'}}">
+    <text class="remind-text">⏳ 已确认付款，等待卖家确认收款</text>
+  </view>
+
+  <!-- 卖家端提醒 -->
+  <view class="remind-box seller-remind" wx:if="{{showConfirmOrder}}">
+    <text class="remind-text">⏳ 有买家拍下，请在24小时内确认订单{{countdown ? '（剩余 ' + countdown + '）' : ''}}</text>
+  </view>
+  <view class="remind-box seller-remind" wx:elif="{{showRemind && statusClass === 'IN_TRADING'}}">
+    <text class="remind-text">⏳ 已确认订单，等待买家确认付款</text>
+  </view>
+  <view class="remind-box seller-remind" wx:elif="{{showReceiveMoney}}">
+    <text class="remind-text">⏳ 买家已付款，请确认收款</text>
+  </view>
+
+  <view class="card goods-card flex-row" wx:if="{{order}}">
+    <image class="thumb" src="{{order.itemImage || placeholder}}" mode="aspectFill" binderror="onImageError" />
+    <view class="info flex-col">
+      <text class="title">{{order.itemTitle}}</text>
+      <text class="price">¥ {{order.price}}</text>
+      <text class="text-muted time">{{createdAtText}}</text>
+    </view>
+  </view>
+
+  <view class="card info-card" wx:if="{{order}}">
+    <view class="info-row flex-row">
+      <text class="label">{{order.postType === 'errand' ? '发布者' : '买家'}}</text>
+      <text class="value">{{buyerName}}</text>
+    </view>
+    <view class="info-row flex-row">
+      <text class="label">{{order.postType === 'errand' ? '骑手' : '卖家'}}</text>
+      <text class="value">{{sellerName}}</text>
+    </view>
+    <view class="info-row flex-row">
+      <text class="label">订单编号</text>
+      <text class="value">{{order.objectId}}</text>
+    </view>
+    <view class="info-row flex-row">
+      <text class="label">创建时间</text>
+      <text class="value">{{createdAtText}}</text>
+    </view>
+  </view>
+
+  <view class="card review-card" wx:if="{{reviews.length || reviewTip}}">
+    <view class="review-title">订单评价</view>
+    <text wx:if="{{reviewTip}}" class="review-tip text-muted">{{reviewTip}}</text>
+    <view wx:for="{{reviews}}" wx:key="objectId" class="review-row">
+      <text class="review-role">{{item.reviewerRoleLabel}}</text>
+      <text class="review-rating">{{item.rating}} 分</text>
+      <text class="review-content">{{item.content || '未填写评价内容'}}</text>
+    </view>
+  </view>
+
+  <!-- 关联跑腿子订单卡片（仅普通商品订单显示） -->
+  <view class="card linked-errand-card" wx:if="{{order && order.postType !== 'errand' && (linkedErrand || showRequestErrand)}}">
+    <view class="linked-errand-title">跑腿配送</view>
+    <view wx:if="{{linkedErrand}}" class="linked-errand-info">
+      <view class="linked-errand-row">
+        <text class="linked-errand-label">状态</text>
+        <text class="linked-errand-status status-{{linkedErrand.status}}">{{linkedErrand.statusLabel}}</text>
+      </view>
+      <view class="linked-errand-row" wx:if="{{linkedErrand.payerLabel}}">
+        <text class="linked-errand-label">付款方</text>
+        <text class="linked-errand-payer">{{linkedErrand.payerLabel}}</text>
+      </view>
+      <view class="linked-errand-row" wx:if="{{linkedErrand.status === 'ON_SALE'}}">
+        <text class="text-muted" style="font-size:24rpx">跑腿任务已发布，等待骑手在首页接单</text>
+      </view>
+    </view>
+    <view wx:else class="text-muted linked-errand-empty">买卖双方协商一致后可申请跑腿配送</view>
+  </view>
+
+  <!-- 跑腿取件/收件码面板 -->
+  <view class="card errand-code-card" wx:if="{{order && order.postType === 'errand' && (statusClass === 'IN_TRADING' || statusClass === 'COMPLETED')}}">
+    <view class="errand-code-title">跑腿验证码</view>
+    <view class="errand-code-tip">跑腿费用请通过群聊与骑手协商确认</view>
+
+    <!-- 取件码区域 -->
+    <view class="code-row">
+      <view class="code-row-left">
+        <text class="code-label">取件码</text>
+        <text class="code-status {{pickupCodeVerified ? 'code-ok' : 'code-pending'}}">
+          {{pickupCodeVerified ? '✓ 骑手已取件' : '待骑手取件'}}
+        </text>
+        <!-- 发布者：显示码值，提示告知卖家 -->
+        <view wx:if="{{showSetPickupCode && pickupCode}}" class="code-hint-block">
+          <text class="code-value-display">{{pickupCode}}</text>
+          <text class="code-hint">请将此码告知卖家，骑手取件时向卖家询问</text>
+        </view>
+      </view>
+      <!-- 骑手：验证取件码 -->
+      <button wx:if="{{showVerifyPickupCode}}" class="btn-code btn-code-verify" data-type="verifyPickup" bindtap="onOpenCodeModal">输入取件码</button>
+      <text wx:elif="{{pickupCodeVerified && (showSetPickupCode || showVerifyDeliveryCode)}}" class="code-verified-tag">已取件 ✓</text>
+    </view>
+
+    <!-- 收件码区域 -->
+    <view class="code-row">
+      <view class="code-row-left">
+        <text class="code-label">收件码</text>
+        <text class="code-status {{deliveryCodeVerified ? 'code-ok' : 'code-pending'}}">
+          {{deliveryCodeVerified ? '✓ 骑手已送达' : (pickupCodeVerified ? '待骑手送达' : '取件完成后可用')}}
+        </text>
+        <!-- 发布者：显示码值，提示告知买家 -->
+        <view wx:if="{{showSetDeliveryCode && deliveryCode}}" class="code-hint-block">
+          <text class="code-value-display">{{deliveryCode}}</text>
+          <text class="code-hint">请将此码告知买家，骑手送达时向买家询问</text>
+        </view>
+      </view>
+      <!-- 骑手：验证收件码（取件完成后才可输入） -->
+      <button wx:if="{{showVerifyDeliveryCode}}" class="btn-code btn-code-verify" data-type="verifyDelivery" bindtap="onOpenCodeModal">输入收件码</button>
+      <text wx:elif="{{deliveryCodeVerified}}" class="code-verified-tag">已送达 ✓</text>
+    </view>
+  </view>
+
+  <view class="action-bar">
+    <button wx:if="{{showConfirmOrder}}" class="btn-primary" bindtap="onConfirmOrder">确认订单</button>
+    <button wx:if="{{showPay}}" class="btn-primary" bindtap="onPay">确认付款</button>
+    <button wx:if="{{showShip}}" class="btn-primary" bindtap="onShip">确认出货</button>
+    <button wx:if="{{showReceive}}" class="btn-primary" bindtap="onConfirmReceive">确认收货</button>
+    <button wx:if="{{showReceiveMoney}}" class="btn-primary" bindtap="onReceiveMoney">确认收款</button>
+    <button wx:if="{{showCancel}}" class="btn-outline" bindtap="onCancelOrder">取消订单</button>
+
+    <!-- 跑腿接单按钮 -->
+    <button wx:if="{{showGroupChat}}" class="btn-outline" bindtap="onGroupChat">进入群聊</button>
+    <button wx:if="{{showAcceptErrand}}" class="btn-primary" bindtap="onAcceptErrand">确认接单</button>
+    <button wx:if="{{showCancelAccept}}" class="btn-outline" style="color:#c45b3e;border-color:#c45b3e" bindtap="onCancelAccept">取消接单</button>
+    <!-- 申请/取消跑腿配送（普通商品订单） -->
+    <button wx:if="{{showRequestErrand}}" class="btn-outline errand-request-btn" bindtap="onRequestErrand">申请跑腿配送</button>
+    <button wx:if="{{showCancelErrand}}" class="btn-outline" bindtap="onCancelErrand">取消跑腿配送</button>
+    <button wx:if="{{showReviewButton}}" class="btn-outline" bindtap="onReview">评价对方</button>
+    <button
+      wx:if="{{showDispute}}"
+      class="btn-outline dispute-btn"
+      bindtap="onDispute"
+    >订单申诉</button>
+    <text wx:if="{{order && order.frozen}}" class="frozen-tip text-muted">订单申诉处理中，暂不可变更状态</text>
+  </view>
+
+  <!-- 验证码输入弹窗 -->
+  <view class="code-modal-mask" wx:if="{{codeModal.visible}}" bindtap="onCodeModalClose">
+    <view class="code-modal" catchtap="noop">
+      <text class="code-modal-title">{{codeModal.title}}</text>
+      <input
+        class="code-modal-input"
+        placeholder="{{codeModal.placeholder}}"
+        value="{{codeModal.inputValue}}"
+        bindinput="onCodeModalInput"
+        focus="{{codeModal.visible}}"
+        maxlength="20"
+      />
+      <view class="code-modal-btns">
+        <button class="btn-outline code-modal-cancel" bindtap="onCodeModalClose">取消</button>
+        <button class="btn-primary code-modal-ok" bindtap="onCodeModalConfirm">确认</button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,18 +1,66 @@
 <view class="verify-page">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <block wx:if="{{verified}}">
     <view class="hero flex-col flex-center">
       <text class="hero-icon">✅</text>
       <text class="hero-title">已通过校园认证</text>
       <text class="text-muted">{{user.campusEmail}}</text>
+      <text class="text-muted" wx:if="{{user.campus}}">所属校区：{{user.campus}}</text>
+    </view>
+  </block>
+  <block wx:elif="{{pending}}">
+    <view class="hero flex-col flex-center">
+      <text class="hero-icon">⏳</text>
+      <text class="hero-title">认证审核中</text>
+      <text class="text-muted text-center sub">已提交 {{user.campusEmail}}，请等待管理员审核</text>
+      <text class="text-muted" wx:if="{{user.campus}}">所属校区：{{user.campus}}</text>
+    </view>
+  </block>
+  <block wx:elif="{{rejected}}">
+    <view class="hero flex-col flex-center">
+      <text class="hero-icon">✕</text>
+      <text class="hero-title">认证未通过</text>
+      <text class="text-muted text-center sub">请核对邮箱与校区后重新提交</text>
+    </view>
+    <view class="card form-card">
+      <view class="field flex-col">
+        <text class="label">所属校区</text>
+        <picker mode="selector" range="{{campuses}}" value="{{campusIndex}}" bindchange="onCampusChange">
+          <view class="picker-val">{{campus || '请选择东校区或西校区'}}</view>
+        </picker>
+      </view>
+      <view class="field flex-col">
+        <text class="label">校园邮箱</text>
+        <input class="input" placeholder="name@xxx.edu.cn" value="{{email}}" bindinput="onEmail" />
+      </view>
+      <view class="field flex-row code-row">
+        <input class="input code-input" placeholder="6 位验证码" maxlength="6" value="{{code}}" bindinput="onCode" />
+        <button
+          class="code-btn {{countdown > 0 ? 'disabled' : ''}}"
+          disabled="{{countdown > 0}}"
+          bindtap="onSendCode"
+        >
+          {{countdown > 0 ? countdown + 's' : '获取验证码'}}
+        </button>
+      </view>
+      <button class="btn-primary submit-btn" loading="{{submitting}}" bindtap="onSubmit">
+        重新提交
+      </button>
     </view>
   </block>
   <block wx:else>
     <view class="hero flex-col flex-center">
       <text class="hero-icon">🎓</text>
       <text class="hero-title">校园邮箱认证</text>
-      <text class="text-muted text-center sub">请使用 .edu.cn 后缀的学校邮箱</text>
+      <text class="text-muted text-center sub">请使用 .edu.cn 后缀的学校邮箱，提交后由管理员审核</text>
     </view>
     <view class="card form-card">
+      <view class="field flex-col">
+        <text class="label">所属校区</text>
+        <picker mode="selector" range="{{campuses}}" value="{{campusIndex}}" bindchange="onCampusChange">
+          <view class="picker-val">{{campus || '请选择东校区或西校区'}}</view>
+        </picker>
+      </view>
       <view class="field flex-col">
         <text class="label">校园邮箱</text>
         <input class="input" placeholder="name@xxx.edu.cn" value="{{email}}" bindinput="onEmail" />

@@ -1,4 +1,5 @@
 <view class="orders-page">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <view class="tabs flex-row">
     <view
       wx:for="{{tabs}}"
@@ -26,6 +27,7 @@
             <text class="title">{{item.itemTitle || '商品'}}</text>
             <text class="price">¥ {{item.price}}</text>
             <view class="flex-row bottom-row">
+              <text wx:if="{{item.isErrand}}" class="tag-errand">跑腿</text>
               <text class="tag-info">{{item.statusLabel}}</text>
               <text class="text-muted time">{{item.createdAtText}}</text>
             </view>

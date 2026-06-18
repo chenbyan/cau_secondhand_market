@@ -1,8 +1,10 @@
 <view class="setting-page">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <view class="card form-card">
     <view class="field flex-row" bindtap="onChooseAvatar">
       <text class="label">头像</text>
-      <image class="preview" src="{{form.avatarUrl || defaultAvatar}}" mode="aspectFill" />
+      <image class="preview" src="{{avatarDisplay || defaultAvatar}}" mode="aspectFill" />
+      <text wx:if="{{uploadingAvatar}}" class="upload-hint">上传中…</text>
     </view>
     <view class="field flex-col">
       <text class="label">昵称</text>

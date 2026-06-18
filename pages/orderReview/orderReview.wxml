@@ -1,0 +1,43 @@
+<view class="review-page page-safe-bottom">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
+
+  <view wx:if="{{loading}}" class="state text-muted text-center">加载中...</view>
+
+  <view wx:if="{{!loading && order}}" class="review-panel">
+    <view class="order-card card-flat">
+      <text class="title">{{order.itemTitle || '订单'}}</text>
+      <text class="meta">评价对象：{{targetLabel}}</text>
+    </view>
+
+    <view class="section">
+      <text class="section-title">评分</text>
+      <view class="rating-row">
+        <view
+          wx:for="{{ratingOptions}}"
+          wx:key="*this"
+          data-value="{{item}}"
+          bindtap="onRatingTap"
+          class="rating-item {{rating == item ? 'active' : ''}}"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">评价内容</text>
+      <textarea
+        class="review-input"
+        maxlength="200"
+        value="{{content}}"
+        placeholder="写下交易体验，可留空"
+        bindinput="onContentInput"
+      />
+    </view>
+
+    <button
+      class="btn-primary submit-btn"
+      loading="{{submitting}}"
+      disabled="{{!canReview || submitting}}"
+      bindtap="onSubmit"
+    >提交评价</button>
+  </view>
+</view>

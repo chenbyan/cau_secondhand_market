@@ -1,17 +1,28 @@
 const auth = require('../../../utils/auth.js')
 const util = require('../../../utils/util.js')
 
+const { CAMPUSES } = auth
+
 Page({
   data: {
     verified: false,
+    pending: false,
+    rejected: false,
     user: {},
     email: '',
     code: '',
+    campus: '',
+    campuses: CAMPUSES,
+    campusIndex: 0,
     countdown: 0,
     submitting: false
   },
 
   timer: null,
+
+  onBack() {
+    util.goBack()
+  },
 
   onLoad() {
     if (!auth.checkLoginStatus()) {
@@ -21,16 +32,30 @@ Page({
     this.syncUser()
   },
 
+  onShow() {
+    if (auth.checkLoginStatus()) {
+      this.syncUser()
+    }
+  },
+
   onUnload() {
     if (this.timer) clearInterval(this.timer)
   },
 
-  syncUser() {
+  async syncUser() {
+    await auth.refreshCurrentUserInfo()
     const u = auth.getUserInfo() || {}
+    const campus = u.campus && CAMPUSES.indexOf(u.campus) >= 0 ? u.campus : ''
+    const campusIndex = campus ? CAMPUSES.indexOf(campus) : 0
+    const status = u.campusVerifySt || ''
     this.setData({
       verified: !!u.campusVerified,
+      pending: !u.campusVerified && status === 'PENDING',
+      rejected: !u.campusVerified && status === 'REJECTED',
       user: u,
-      email: u.campusEmail || ''
+      email: u.campusEmail || '',
+      campus,
+      campusIndex
     })
   },
 
@@ -41,8 +66,20 @@ Page({
     this.setData({ code: e.detail.value.trim() })
   },
 
+  onCampusChange(e) {
+    const i = Number(e.detail.value)
+    this.setData({
+      campusIndex: i,
+      campus: CAMPUSES[i]
+    })
+  },
+
   async onSendCode() {
-    const { email } = this.data
+    const { email, campus } = this.data
+    if (!campus) {
+      util.showToast('请先选择校区')
+      return
+    }
     if (!util.validateEmail(email)) {
       util.showToast('请输入有效的 .edu.cn 邮箱')
       return
@@ -80,9 +117,13 @@ Page({
   },
 
   async onSubmit() {
-    const { email, code } = this.data
+    const { email, code, campus } = this.data
+    if (!campus) {
+      util.showToast('请选择东校区或西校区')
+      return
+    }
     if (!util.validateEmail(email)) {
-      util.showToast('邮箱格式不正确')
+      util.showToast('请输入有效的 .edu.cn 邮箱')
       return
     }
     if (!/^\d{6}$/.test(code)) {
@@ -91,16 +132,17 @@ Page({
     }
     this.setData({ submitting: true })
     try {
-      const r = await auth.verifyCode(email, code)
+      const r = await auth.verifyCode(email, code, campus)
       if (!r.success) {
         util.showToast(r.message || '验证失败')
         return
       }
-      util.showToast('认证成功', 'success')
-      this.setData({ verified: true })
-      auth.getUserInfo()
-      this.syncUser()
+      util.showToast(r.message || '已提交审核', 'success')
+      await this.syncUser()
       getApp().syncGlobalUser()
+      if (r.message && r.message.indexOf('等待') >= 0) {
+        return
+      }
       setTimeout(() => {
         wx.switchTab({ url: '/pages/my/my' })
       }, 2000)

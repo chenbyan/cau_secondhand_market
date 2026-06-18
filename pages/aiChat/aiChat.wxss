@@ -1,0 +1,164 @@
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f5f5f5;
+}
+
+/* 消息列表 */
+.msg-list {
+  flex: 1;
+  padding: 20rpx;
+}
+.msg-row {
+  display: flex;
+  margin-bottom: 30rpx;
+}
+.msg-row.user {
+  justify-content: flex-end;
+}
+.msg-row.bot {
+  justify-content: flex-start;
+}
+.bubble {
+  max-width: 70%;
+  padding: 20rpx 30rpx;
+  border-radius: 20rpx;
+  font-size: 28rpx;
+  line-height: 1.6;
+  word-break: break-all;
+}
+.user .bubble {
+  background: #4a7ab8;
+  color: #fff;
+}
+.bot .bubble {
+  background: #fff;
+  color: #333;
+}
+.loading {
+  color: #999;
+}
+
+/* 底部区域 */
+.bottom-area {
+  background: #fff;
+  border-top: 1rpx solid #eee;
+  flex-shrink: 0;
+}
+
+/* 关键词快捷区域 */
+.quick-words {
+  padding: 10rpx 20rpx;
+}
+.words-scroll {
+  white-space: nowrap;
+}
+.word-chip {
+  display: inline-block;
+  background: #e8f0f8;
+  color: #4a7ab8;
+  padding: 8rpx 20rpx;
+  border-radius: 30rpx;
+  margin-right: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+.word-chip:active {
+  background: #d4e4f7;
+}
+
+/* 输入栏 */
+.input-bar {
+  display: flex;
+  align-items: center;
+  padding: 10rpx 20rpx 20rpx;
+}
+.msg-input {
+  flex: 1;
+  height: 70rpx;
+  border: 1rpx solid #ddd;
+  border-radius: 35rpx;
+  padding: 0 30rpx;
+  font-size: 28rpx;
+}
+.btn-send {
+  margin-left: 20rpx;
+  background: #4a7ab8;
+  color: #fff;
+}
+/* 订单卡片样式 */
+.orders-bubble {
+  width: 100%;
+  max-width: 85%;
+}
+.orders-title {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 12rpx;
+  font-size: 28rpx;
+  color: #333;
+}
+.order-list {
+  width: 100%;
+}
+.order-item {
+  background: #f8f9fa;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  margin-bottom: 12rpx;
+  border: 1rpx solid #e9ecef;
+}
+.order-item:last-child {
+  margin-bottom: 0;
+}
+.order-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+.order-title {
+  font-size: 26rpx;
+  color: #2c3e50;
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-price {
+  font-size: 28rpx;
+  color: #e85d4c;
+  font-weight: 600;
+  margin-left: 20rpx;
+}
+.order-item-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.order-status {
+  font-size: 22rpx;
+  color: #6c757d;
+  background: #e9ecef;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+}
+.order-arrow {
+  font-size: 22rpx;
+  color: #4a7ab8;
+}
+/* 原有样式保持不变... */
+
+/* 新增：可点击链接样式 */
+.inline-link {
+  color: #4a7ab8;
+  text-decoration: underline;
+  display: inline;
+  margin: 0 2rpx;
+}
+
+.rich-bubble {
+  line-height: 1.8;
+}

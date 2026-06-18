@@ -1,0 +1,75 @@
+<view class="chat-page">
+  <scroll-view scroll-y class="msg-list" scroll-into-view="{{scrollToView}}">
+    <block wx:for="{{messages}}" wx:key="index">
+      <!-- 带可点击链接的bot消息 -->
+      <view wx:if="{{item.nodes && item.nodes.length}}" class="msg-row bot">
+        <view class="bubble rich-bubble">
+          <block wx:for="{{item.nodes}}" wx:key="index">
+            <text wx:if="{{item.type === 'text'}}">{{item.text}}</text>
+            <navigator wx:if="{{item.type === 'link'}}" url="{{item.url}}" class="inline-link">{{item.text}}</navigator>
+          </block>
+        </view>
+      </view>
+
+      <!-- 普通文本消息（用户或没有nodes的bot） -->
+      <view wx:elif="{{item.type === 'text' || !item.type}}" class="msg-row {{item.role === 'user' ? 'user' : 'bot'}}">
+        <view class="bubble">{{item.content}}</view>
+      </view>
+
+      <!-- 订单列表消息（可点击） -->
+      <view wx:if="{{item.type === 'orders'}}" class="msg-row bot">
+        <view class="bubble orders-bubble">
+          <text class="orders-title">{{item.content}}</text>
+          <view class="order-list">
+            <view
+              wx:for="{{item.orders}}"
+              wx:key="objectId"
+              class="order-item"
+              bindtap="onOrderTap"
+              data-id="{{item.objectId}}"
+            >
+              <view class="order-item-top">
+                <text class="order-title">{{item.title}}</text>
+                <text class="order-price">¥{{item.price}}</text>
+              </view>
+              <view class="order-item-bottom">
+                <text class="order-status">{{item.statusText}}</text>
+                <text class="order-arrow">查看详情 ›</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <view wx:if="{{loading}}" class="msg-row bot">
+      <view class="bubble loading">正在输入...</view>
+    </view>
+    <view id="bottom"></view>
+  </scroll-view>
+
+  <!-- 底部输入区域 -->
+  <view class="bottom-area">
+    <view class="quick-words">
+      <scroll-view scroll-x class="words-scroll">
+        <block wx:for="{{quickWords}}" wx:key="*this">
+          <view class="word-chip" bindtap="onQuickWordTap" data-word="{{item}}">
+            {{item}}
+          </view>
+        </block>
+      </scroll-view>
+    </view>
+
+    <view class="input-bar">
+      <input
+        class="msg-input"
+        value="{{inputText}}"
+        placeholder="输入您的问题..."
+        bindinput="onInput"
+        confirm-type="send"
+        bindconfirm="sendMsg"
+      />
+      <button class="btn-send" size="mini" bindtap="sendMsg">发送</button>
+    </view>
+  </view>
+</view>

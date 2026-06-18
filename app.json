@@ -1,6 +1,9 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/messages/messages",
+    "pages/chatRoom/chatRoom",
+    "pages/publishHub/publishHub",
     "pages/login/login",
     "pages/my/my",
     "pages/my/mySetting/mySetting",
@@ -8,37 +11,51 @@
     "pages/my/myOrders/myOrders",
     "pages/my/myItems/myItems",
     "pages/my/myCart/myCart",
+    "pages/my/creditRecords/creditRecords",
     "pages/my/about/about",
     "pages/orderDetail/orderDetail",
+    "pages/orderReview/orderReview",
     "pages/itemDetail/itemDetail",
-    "pages/itemPublish/itemPublish"
+    "pages/itemPublish/itemPublish",
+    "pages/errandPublish/errandPublish",
+    "pages/feedback/feedback",
+    "pages/aiChat/aiChat"
   ],
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#2d5a8e",
+    "custom": true,
+    "color": "#8a9399",
+    "selectedColor": "#4a7ab8",
     "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页",
-        "iconPath": "static/tab/home.png",
-        "selectedIconPath": "static/tab/home-active.png"
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/messages/messages",
+        "text": "消息"
       },
       {
         "pagePath": "pages/my/my",
-        "text": "我的",
-        "iconPath": "static/tab/my.png",
-        "selectedIconPath": "static/tab/my-active.png"
+        "text": "我的"
       }
     ]
   },
   "window": {
-    "navigationBarBackgroundColor": "#2d5a8e",
-    "navigationBarTitleText": "校园二手交易",
+    "navigationBarBackgroundColor": "#4a7ab8",
+    "navigationBarTitleText": "校园二手",
     "navigationBarTextStyle": "white",
-    "backgroundColor": "#f5f5f5"
+    "backgroundColor": "#f2f5f8"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于登录后识别东校区或西校区，优化内容推荐"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

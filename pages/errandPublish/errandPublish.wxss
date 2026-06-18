@@ -1,0 +1,49 @@
+@import '../itemPublish/itemPublish.wxss';
+
+.tip-bar {
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  background: #e8f4ff;
+}
+
+.tip-text {
+  font-size: 24rpx;
+  color: #4a7ab8;
+  line-height: 1.5;
+}
+
+.reward-row {
+  width: 100%;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.quick-tags {
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.quick-tag {
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #4a7ab8;
+  background: #f0f6fc;
+  border-radius: 24rpx;
+}
+
+.quick-tag:active {
+  background: #dce9f7;
+}
+
+.datetime-row {
+  gap: 16rpx;
+}
+
+.picker-half {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}

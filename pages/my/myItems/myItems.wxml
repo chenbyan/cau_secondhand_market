@@ -1,13 +1,24 @@
-<view class="items-page">
-  <view class="tabs flex-row">
+<view class="items-page page-safe-bottom">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
+  <view class="publish-tabs flex-row">
     <view
-      wx:for="{{tabs}}"
+      wx:for="{{publishTabs}}"
       wx:key="key"
-      class="tab {{activeTab === item.key ? 'active' : ''}}"
+      class="pub-tab {{activePublishTab === item.key ? 'active' : ''}}"
       data-key="{{item.key}}"
-      bindtap="onTab"
+      bindtap="onPublishTab"
     >{{item.name}}</view>
   </view>
+
+  <scroll-view scroll-x class="status-scroll" enable-flex>
+    <view
+      wx:for="{{statusChips}}"
+      wx:key="key"
+      class="status-chip {{activeStatus === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onStatusChip"
+    >{{item.name}}</view>
+  </scroll-view>
 
   <scroll-view
     scroll-y
@@ -19,33 +30,49 @@
   >
     <view wx:if="{{loading && !items.length}}" class="state text-muted text-center">加载中...</view>
     <block wx:for="{{items}}" wx:key="objectId">
-      <view class="item-card card">
-        <view class="flex-row" data-id="{{item.objectId}}" bindtap="onOpenDetail">
+      <view class="item-card card-flat">
+        <view class="flex-row card-body" data-id="{{item.objectId}}" bindtap="onOpenDetail">
           <image class="thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
           <view class="info flex-col">
-            <text class="title">{{item.title}}</text>
-            <text class="price">¥ {{item.price}}</text>
-            <text class="text-muted time">{{item.createdAtText}}</text>
-            <text class="tag-info status-tag">{{item.statusLabel}}</text>
+            <text class="title">[{{item.typeLabel}}] {{item.title}}</text>
+            <text wx:if="{{item.routeHint}}" class="route-hint text-caption">{{item.routeHint}}</text>
+            <text class="price">{{item.priceLabel}} ¥ {{item.price}}</text>
+            <text class="text-caption time">{{item.createdAtText}}</text>
+            <view class="{{item.statusClass}}">{{item.statusLabel}}</view>
           </view>
         </view>
         <view class="actions flex-row">
-          <block wx:if="{{item.status === 'ON_SALE'}}">
-            <button size="mini" class="btn-outline mini" data-item="{{item}}" catchtap="onEdit">编辑</button>
-            <button size="mini" class="btn-outline mini" data-id="{{item.objectId}}" catchtap="onOffline">下架</button>
+          <!-- 物品：在售 -->
+          <block wx:if="{{!item.isErrand && item.status === 'ON_SALE'}}">
+            <button size="mini" class="btn-action" data-item="{{item}}" catchtap="onEdit">编辑</button>
+            <button size="mini" class="btn-action outline" data-id="{{item.objectId}}" catchtap="onOffline">下架</button>
           </block>
+          <!-- 跑腿：未接单 -->
+          <block wx:if="{{item.isErrand && item.status === 'ON_SALE'}}">
+            <button size="mini" class="btn-action" data-item="{{item}}" catchtap="onEdit">编辑</button>
+            <button size="mini" class="btn-action outline" data-id="{{item.objectId}}" catchtap="onOffline">取消</button>
+          </block>
+          <block wx:if="{{item.isErrand && item.status === 'IN_TRADING'}}">
+            <button size="mini" class="btn-action" data-id="{{item.objectId}}" catchtap="onCompleteErrand">标记完成</button>
+          </block>
+          <!-- 已下架/已取消 -->
           <block wx:if="{{item.status === 'OFFLINE'}}">
-            <button size="mini" class="btn-outline mini" data-id="{{item.objectId}}" catchtap="onOnline">重新上架</button>
-            <button size="mini" class="btn-danger mini danger" data-id="{{item.objectId}}" catchtap="onDelete">删除</button>
+            <button wx:if="{{item.rectifyRequired && !item.isErrand}}" size="mini" class="btn-action" data-item="{{item}}" catchtap="onEdit">编辑整改</button>
+            <button size="mini" class="btn-action" data-id="{{item.objectId}}" catchtap="onOnline">
+              {{item.isErrand ? '重新发布' : '重新上架'}}
+            </button>
+            <button size="mini" class="btn-action danger" data-id="{{item.objectId}}" catchtap="onDelete">删除</button>
           </block>
         </view>
       </view>
     </block>
     <view wx:if="{{!loading && !items.length}}" class="empty flex-col flex-center">
-      <text class="empty-icon">📦</text>
-      <text class="text-muted">暂无发布的商品</text>
+      <text class="empty-icon">{{activePublishTab === 'errand' ? '🏃' : '📦'}}</text>
+      <text class="empty-title">暂无{{activePublishTab === 'errand' ? '跑腿' : '发布'}}</text>
       <button class="btn-primary empty-btn" bindtap="goPublish">去发布</button>
     </view>
     <view wx:if="{{loadingMore}}" class="state text-muted text-center">加载更多...</view>
   </scroll-view>
+
+  <view class="fab-publish" bindtap="goPublish">+</view>
 </view>

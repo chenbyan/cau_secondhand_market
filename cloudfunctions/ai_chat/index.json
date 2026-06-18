@@ -1,0 +1,6 @@
+{
+  "name": "ai_chat",
+  "dependencies": {
+    "openai": "^4.0.0"
+  }
+}

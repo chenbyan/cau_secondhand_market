@@ -3,8 +3,16 @@ const util = require('../../../utils/util.js')
 const Bmob = require('../../../utils/bmob.js')
 
 const STATUS_MAP = {
-  PENDING_CONFIRM: '待确认',
-  IN_TRADING: '交易中',
+  PENDING_CONFIRM: '待卖家确认',
+  IN_TRADING: '待买家付款',
+  SHIPPED: '待卖家收款',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消'
+}
+
+const ERRAND_STATUS_MAP = {
+  PENDING_CONFIRM: '待接单确认',
+  IN_TRADING: '跑腿进行中',
   COMPLETED: '已完成',
   CANCELLED: '已取消'
 }
@@ -15,7 +23,8 @@ Page({
     tabs: [
       { key: 'all', name: '全部' },
       { key: 'PENDING_CONFIRM', name: '待确认' },
-      { key: 'IN_TRADING', name: '交易中' },
+      { key: 'IN_TRADING', name: '待付款' },
+      { key: 'SHIPPED', name: '待收款' },
       { key: 'COMPLETED', name: '已完成' },
       { key: 'CANCELLED', name: '已取消' }
     ],
@@ -30,16 +39,36 @@ Page({
       'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
   },
 
+  onBack() {
+    util.goBack()
+  },
+
   onLoad(options) {
     if (!auth.checkLoginStatus()) {
       wx.redirectTo({ url: '/pages/login/login' })
       return
     }
-    const type = options.type === 'sell' ? 'sell' : 'buy'
-    wx.setNavigationBarTitle({
-      title: type === 'sell' ? '我卖出的' : '我买到的'
-    })
-    this.setData({ type })
+    let type = 'buy'
+    if (options.type === 'sell') type = 'sell'
+    else if (options.type === 'errand') type = 'errand'
+    const titleMap = { buy: '我买到的', sell: '我卖出的', errand: '跑腿接单' }
+    wx.setNavigationBarTitle({ title: titleMap[type] })
+    // 跑腿接单只展示进行中相关状态
+    const tabs = type === 'errand'
+      ? [
+          { key: 'all', name: '全部' },
+          { key: 'PENDING_CONFIRM', name: '待确认' },
+          { key: 'IN_TRADING', name: '进行中' },
+          { key: 'COMPLETED', name: '已完成' },
+          { key: 'CANCELLED', name: '已取消' }
+        ]
+      : this.data.tabs
+    this.setData({ type, tabs })
+    this.loadOrders(true)
+  },
+
+  onShow() {
+    this.setData({ page: 0, orders: [], hasMore: true })
     this.loadOrders(true)
   },
 
@@ -68,8 +97,16 @@ Page({
     else this.setData({ loadingMore: true })
     try {
       const q = Bmob.Query('Order')
-      const field = this.data.type === 'buy' ? 'buyerId' : 'sellerId'
-      q.equalTo(field, '==', u.objectId)
+      const { type } = this.data
+      if (type === 'errand') {
+        // 跑腿接单：我是骑手（sellerId）且 postType = errand
+        q.equalTo('sellerId', '==', u.objectId)
+        q.equalTo('postType', '==', 'errand')
+      } else {
+        const field = type === 'buy' ? 'buyerId' : 'sellerId'
+        q.equalTo(field, '==', u.objectId)
+        // 不用 notEqualTo（Bmob SDK 兼容性差），改用客户端过滤
+      }
       const tab = this.data.activeTab
       if (tab !== 'all') {
         q.equalTo('status', '==', tab)
@@ -77,12 +114,23 @@ Page({
       q.order('-createdAt')
       q.limit(10)
       q.skip(page * 10)
-      const list = await q.find()
-      const orders = (list || []).map((row) => ({
-        ...row,
-        statusLabel: STATUS_MAP[row.status] || row.status || '未知',
-        createdAtText: row.createdAt ? util.formatTime(row.createdAt) : ''
-      }))
+      let list = await q.find()
+      // 客户端过滤：买到的/卖出的 排除跑腿订单；跑腿接单 只保留 errand
+      if (type === 'buy') {
+        list = (list || []).filter(row => row.postType !== 'errand')
+      } else if (type === 'sell') {
+        list = (list || []).filter(row => row.postType !== 'errand')
+      }
+      const isErrandType = type === 'errand'
+      const orders = (list || []).map((row) => {
+        const sMap = (isErrandType || row.postType === 'errand') ? ERRAND_STATUS_MAP : STATUS_MAP
+        return {
+          ...row,
+          statusLabel: sMap[row.status] || row.status || '未知',
+          createdAtText: row.createdAt ? util.formatTime(row.createdAt) : '',
+          isErrand: row.postType === 'errand'
+        }
+      })
       const merged = reset ? orders : this.data.orders.concat(orders)
       this.setData({
         orders: merged,
@@ -99,7 +147,6 @@ Page({
 
   onOpenDetail(e) {
     const id = e.currentTarget.dataset.id
-    // 订单详情页由其他同学实现
     wx.navigateTo({
       url: `/pages/orderDetail/orderDetail?id=${id}`
     })

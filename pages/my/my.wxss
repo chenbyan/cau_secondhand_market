@@ -1,81 +1,266 @@
 .my-page {
-  padding-bottom: 48rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+  /* 留出自定义 tabBar 高度，避免底部菜单被遮挡导致点击无效 */
+  padding-bottom: calc(280rpx + env(safe-area-inset-bottom));
+}
+
+.profile-hero {
+  background: linear-gradient(160deg, #5b8fd4 0%, #4a7ab8 55%, #3d6a9e 100%);
+  padding: 32rpx 24rpx 48rpx;
+  margin-bottom: -24rpx;
 }
 
 .user-card {
-  margin-top: 24rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 32rpx 28rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
 }
 
 .user-row {
   align-items: center;
 }
 
-.avatar {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 50%;
+.avatar-wrap {
+  position: relative;
   margin-right: 24rpx;
-  background: #eee;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8f0f8, #d4e4f7);
+  border: 4rpx solid #fff;
+}
+
+.avatar-guest {
+  width: 128rpx;
+  height: 128rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8f0f8, #d4e4f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guest-icon {
+  font-size: 56rpx;
+}
+
+.avatar-badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
+  text-align: center;
+  background: #1a7f37;
+  color: #fff;
+  font-size: 22rpx;
+  border-radius: 50%;
+  border: 3rpx solid #fff;
 }
 
 .user-meta {
   flex: 1;
+  min-width: 0;
 }
 
 .nickname {
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: 600;
-  margin-bottom: 12rpx;
+  color: #2c3e50;
+  margin-bottom: 8rpx;
 }
 
-.tags-row {
-  gap: 16rpx;
+.user-status {
+  font-size: 24rpx;
+  color: #4a7ab8;
+  margin-bottom: 16rpx;
 }
 
-.campus-tap {
-  padding: 0;
+.credit-row {
+  align-items: center;
+  gap: 12rpx;
 }
 
-.credit {
-  margin-left: 8rpx;
+.credit-label {
+  font-size: 22rpx;
+  color: #8a9399;
+  flex-shrink: 0;
+}
+
+.credit-bar {
+  flex: 1;
+  height: 12rpx;
+  background: #eef1f5;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.credit-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5b8fd4, #4a7ab8);
+  border-radius: 8rpx;
+  min-width: 8rpx;
+}
+
+.credit-num {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #4a7ab8;
+  flex-shrink: 0;
 }
 
 .menu {
   margin-top: 24rpx;
 }
 
+.menu-secondary {
+  margin-top: 16rpx;
+  margin-bottom: 24rpx;
+}
+
 .cell {
-  padding: 28rpx 8rpx;
-  border-bottom: 1rpx solid #f0f0f0;
+  padding: 30rpx 12rpx;
+  border-bottom: 1rpx solid #f0f2f5;
 }
 
 .cell:last-child {
   border-bottom: none;
 }
 
+.cell-hover {
+  background: #f7f9fc;
+}
+
 .cell-icon {
-  width: 56rpx;
-  font-size: 32rpx;
+  margin-right: 20rpx;
+}
+
+.icon-box {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 12rpx;
+  background: #e8f0f8;
+  position: relative;
+}
+
+.icon-publish-list::after {
+  content: '';
+  position: absolute;
+  left: 14rpx;
+  top: 12rpx;
+  width: 20rpx;
+  height: 16rpx;
+  border: 3rpx solid #4a7ab8;
+  border-radius: 4rpx;
+}
+
+.icon-order-buy::after,
+.icon-order-sell::after {
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  top: 10rpx;
+  width: 24rpx;
+  height: 28rpx;
+  border: 3rpx solid #4a7ab8;
+  border-radius: 4rpx;
+}
+
+.icon-cart::after {
+  content: '';
+  position: absolute;
+  left: 10rpx;
+  top: 14rpx;
+  width: 28rpx;
+  height: 22rpx;
+  border: 3rpx solid #4a7ab8;
+  border-bottom: none;
+  border-radius: 6rpx 6rpx 0 0;
+}
+
+.icon-credit::after {
+  content: '分';
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  top: 8rpx;
+  font-size: 24rpx;
+  color: #4a7ab8;
+  font-weight: 600;
+}
+
+.icon-setting::after {
+  content: '';
+  position: absolute;
+  left: 16rpx;
+  top: 14rpx;
+  width: 16rpx;
+  height: 16rpx;
+  border: 3rpx solid #4a7ab8;
+  border-radius: 50%;
+}
+
+.icon-campus::after {
+  content: '学';
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  top: 8rpx;
+  font-size: 24rpx;
+  color: #4a7ab8;
+  font-weight: 600;
+}
+
+.icon-about::after {
+  content: 'i';
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  top: 6rpx;
+  font-size: 28rpx;
+  color: #4a7ab8;
+  font-weight: 600;
+  font-style: italic;
+}
+
+/* 新增：智能客服图标 */
+.icon-ai::after {
+  content: '🤖';
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  top: 2rpx;
+  font-size: 28rpx;
+  color: #4a7ab8;
 }
 
 .cell-text {
   flex: 1;
   font-size: 30rpx;
+  color: #333;
 }
 
 .cell-arrow {
-  color: #cccccc;
-  font-size: 40rpx;
+  color: #c5cdd6;
+  font-size: 36rpx;
 }
 
 .disabled {
-  opacity: 0.5;
+  opacity: 0.65;
 }
 
 .logout-wrap {
-  margin: 48rpx 24rpx;
-}
-
-.logout-btn {
-  width: 100%;
+  margin: 32rpx 24rpx 48rpx;
+  padding-bottom: 16rpx;
 }

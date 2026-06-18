@@ -1,14 +1,33 @@
 const util = require('./utils/util.js')
 const authStorage = require('./utils/authStorage.js')
+const { CLOUD_ENV_ID, CLOUD_STORAGE_ENABLED } = require('./utils/cloudConfig.js')
 
 App({
   globalData: {
     isLoggedIn: false,
     userInfo: null,
-    campusVerified: false
+    campusVerified: false,
+    unreadNoticeCount: 0
   },
 
   onLaunch() {
+    if (CLOUD_STORAGE_ENABLED && wx.cloud) {
+      if (!CLOUD_ENV_ID || CLOUD_ENV_ID === 'your-cloud-env-id') {
+        console.warn(
+          '[云存储] 请在 utils/cloudConfig.js 填写 CLOUD_ENV_ID（开发者工具 → 云开发 → 设置）'
+        )
+      } else {
+        try {
+          wx.cloud.init({
+            traceUser: true,
+            env: CLOUD_ENV_ID
+          })
+        } catch (e) {
+          console.warn('云开发初始化失败', e)
+        }
+      }
+    }
+
     try {
       const logged = authStorage.checkLoginStatus()
       if (logged) {
@@ -44,6 +63,13 @@ App({
       console.error(e)
       this.globalData.isLoggedIn = false
     }
+
+    setTimeout(() => {
+      try {
+        const sysConfig = require('./utils/sysConfig.js')
+        sysConfig.ensureLoaded().catch(() => {})
+      } catch (e) {}
+    }, 0)
   },
 
   syncGlobalUser() {
@@ -52,6 +78,23 @@ App({
     this.globalData.userInfo = u
     this.globalData.isLoggedIn = !!u
     this.globalData.campusVerified = !!(u && u.campusVerified)
+    if (u && u.objectId) {
+      try {
+        const notice = require('./utils/notice.js')
+        notice.syncTabBadge()
+      } catch (e) {}
+    }
+  },
+
+  refreshTabBadge() {
+    const pages = getCurrentPages()
+    if (!pages.length) return
+    const page = pages[pages.length - 1]
+    if (page && typeof page.getTabBar === 'function' && page.getTabBar()) {
+      page.getTabBar().setData({
+        messageBadge: this.globalData.unreadNoticeCount || 0
+      })
+    }
   },
 
   async checkAndLogin() {
@@ -66,5 +109,11 @@ App({
       return false
     }
     return true
+  },
+
+  /** 发布/购买/接单等：须已校园认证 */
+  checkAndCampusVerified(tip) {
+    const auth = require('./utils/auth.js')
+    return auth.guardCampusAction({ tip })
   }
 })

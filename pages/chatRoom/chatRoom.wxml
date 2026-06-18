@@ -1,0 +1,42 @@
+<view class="chat-page">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
+  <view class="chat-tip card-flat" wx:if="{{roomTitle}}">
+    <text class="tip-title">{{roomTitle}}</text>
+    <text class="tip-sub">校内认证用户群聊 · 发布者 / {{isErrand ? '骑手' : '买家'}} 同一群内沟通</text>
+    <text class="tip-my-role" wx:if="{{myRoleLabel}}">您的身份：{{myRoleLabel}}</text>
+    <view class="member-tags flex-row">
+      <text wx:for="{{memberTags}}" wx:key="*this" class="member-tag">{{item}}</text>
+    </view>
+  </view>
+
+  <scroll-view
+    class="msg-scroll"
+    scroll-y
+    scroll-into-view="{{scrollInto}}"
+    scroll-with-animation
+  >
+    <view wx:for="{{messages}}" wx:key="objectId" id="msg-{{index}}" class="msg-row {{item.isSelf ? 'self' : ''}}">
+      <view class="msg-bubble">
+        <text class="msg-role">{{item.roleLabel}}</text>
+        <text class="msg-name">{{item.senderName}}</text>
+        <text class="msg-content">{{item.content}}</text>
+        <text class="msg-time">{{item.timeText}}</text>
+      </view>
+    </view>
+    <view wx:if="{{!messages.length}}" class="empty-chat flex-center">
+      <text class="text-muted">发送第一条消息开始沟通吧</text>
+    </view>
+  </scroll-view>
+
+  <view class="input-bar flex-row">
+    <input
+      class="chat-input"
+      placeholder="输入消息，群内可见"
+      value="{{inputText}}"
+      bindinput="onInput"
+      confirm-type="send"
+      bindconfirm="onSend"
+    />
+    <button class="btn-primary send-btn" bindtap="onSend">发送</button>
+  </view>
+</view>

@@ -1,0 +1,38 @@
+<view class="credit-page page-safe-bottom">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
+
+  <view class="summary-band">
+    <view class="score-row">
+      <text class="score-num">{{score}}</text>
+      <text class="score-label {{levelTone}}">{{levelLabel}}</text>
+    </view>
+    <view class="score-bar">
+      <view class="score-fill {{levelTone}}" style="width: {{percent}}%;"></view>
+    </view>
+  </view>
+
+  <view class="record-list">
+    <view wx:if="{{!loading && list.length === 0}}" class="empty-state">
+      <text class="text-muted">暂无信用变更记录</text>
+    </view>
+
+    <view wx:for="{{list}}" wx:key="objectId" class="record-card">
+      <view class="record-main">
+        <view class="record-meta">
+          <text class="record-source">{{item.sourceLabel}}</text>
+          <text class="record-time">{{item.createdAtText}}</text>
+        </view>
+        <text class="record-reason">{{item.reason}}</text>
+        <text class="record-score">变更前 {{item.beforeScore}} · 变更后 {{item.afterScore}}</text>
+      </view>
+      <text class="record-delta {{item.deltaClass}}">{{item.deltaText}}</text>
+    </view>
+
+    <view wx:if="{{loading || loadingMore}}" class="loading-tip">
+      <text class="text-muted">加载中...</text>
+    </view>
+    <view wx:if="{{!hasMore && list.length > 0}}" class="loading-tip">
+      <text class="text-muted">没有更多记录</text>
+    </view>
+  </view>
+</view>

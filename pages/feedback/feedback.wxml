@@ -1,0 +1,180 @@
+<view class="feedback-page page-safe-bottom">
+  <!-- 我的申诉/举报 -->
+  <block wx:if="{{mode === 'list'}}">
+    <view wx:if="{{loadError}}" class="empty flex-col flex-center">
+      <text class="error-tip">{{loadError}}</text>
+    </view>
+    <view wx:elif="{{!loggedIn}}" class="empty flex-col flex-center">
+      <text class="text-muted">登录后可查看申诉与举报记录</text>
+    </view>
+    <view wx:elif="{{loading}}" class="empty flex-col flex-center">
+      <text class="text-muted">加载中...</text>
+    </view>
+    <view wx:elif="{{!tickets.length}}" class="empty flex-col flex-center">
+      <text class="text-muted">暂无申诉或举报记录</text>
+    </view>
+    <view wx:else class="ticket-list">
+      <view wx:for="{{tickets}}" wx:key="objectId" class="card ticket-card">
+        <view class="flex-row ticket-head">
+          <text class="tag tag-primary">{{item.ticketTypeLabel}}</text>
+          <text class="status text-muted">{{item.statusLabel}}</text>
+        </view>
+        <text class="reason">{{item.reason}}</text>
+        <view wx:if="{{item.thumbs.length}}" class="thumb-row flex-row">
+          <image wx:for="{{item.thumbs}}" wx:for-item="img" wx:key="*this" class="thumb" src="{{img}}" mode="aspectFill" />
+        </view>
+        <text wx:if="{{item.caseKey}}" class="text-muted sub">案卷 {{item.caseKey}}</text>
+        <view class="flex-row card-actions">
+          <button
+            wx:if="{{item.canCancel}}"
+            class="btn-outline cancel-btn"
+            size="mini"
+            data-id="{{item.objectId}}"
+            bindtap="onCancelTicket"
+          >撤销</button>
+          <button
+            wx:if="{{item.caseKey}}"
+            class="btn-outline link-btn"
+            size="mini"
+            data-case-key="{{item.caseKey}}"
+            bindtap="openCase"
+          >查看案卷</button>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 收到的举报（被举报方） -->
+  <block wx:elif="{{mode === 'inbox'}}">
+    <view class="tip-banner">
+      <text>不会收到微信推送，请定期查看此处并回应。同一商品的多条举报已自动归并。</text>
+    </view>
+    <view wx:if="{{!loggedIn}}" class="empty flex-col flex-center">
+      <text class="text-muted">登录后查看收到的举报</text>
+    </view>
+    <view wx:elif="{{loading}}" class="empty flex-col flex-center">
+      <text class="text-muted">加载中...</text>
+    </view>
+    <view wx:elif="{{!inbox.length}}" class="empty flex-col flex-center">
+      <text class="text-muted">暂无待处理举报</text>
+    </view>
+    <view wx:else class="ticket-list">
+      <view
+        wx:for="{{inbox}}"
+        wx:key="caseKey"
+        class="card ticket-card"
+        data-case-key="{{item.caseKey}}"
+        bindtap="openCase"
+      >
+        <view class="flex-row ticket-head">
+          <text class="tag tag-warn">待回应</text>
+          <text class="status text-muted">{{item.openCount}} 条进行中</text>
+        </view>
+        <text class="reason">{{item.caseTitle}}</text>
+        <text class="text-muted sub">共 {{item.reportCount}} 条举报 · 点击查看并回应</text>
+      </view>
+    </view>
+  </block>
+
+  <!-- 案卷详情 + 回应 -->
+  <block wx:elif="{{mode === 'case'}}">
+    <view wx:if="{{loading}}" class="empty flex-col flex-center">
+      <text class="text-muted">加载中...</text>
+    </view>
+    <view wx:elif="{{loadError}}" class="empty flex-col flex-center">
+      <text class="error-tip">{{loadError}}</text>
+      <button class="btn-outline link-btn" size="mini" bindtap="loadCase">重新加载</button>
+    </view>
+    <block wx:elif="{{caseDetail}}">
+      <view class="card case-summary">
+        <text class="case-title">{{caseDetail.caseTitle || '案卷详情'}}</text>
+        <text class="text-muted sub">案卷号 {{caseDetail.caseKey}}</text>
+        <text wx:if="{{caseDetail.isClosed}}" class="text-muted sub">状态：已结案</text>
+        <view wx:if="{{caseDetail.decisionSummary}}" class="decision-box">
+          <text class="decision-title">处理结果</text>
+          <text class="reason decision-note">{{caseDetail.decisionSummary}}</text>
+        </view>
+      </view>
+      <view class="section-title">工单记录</view>
+      <view wx:for="{{caseDetail.tickets}}" wx:key="objectId" class="card ticket-card">
+        <view class="flex-row ticket-head">
+          <text class="tag tag-primary">{{item.ticketTypeLabel}}</text>
+          <text class="status text-muted">{{item.statusLabel}}</text>
+        </view>
+        <text class="reason">{{item.reason}}</text>
+        <view wx:if="{{item.decisionSummary}}" class="decision-box compact">
+          <text class="decision-title">处理结果</text>
+          <text class="reason decision-note">{{item.decisionSummary}}</text>
+        </view>
+        <view wx:if="{{item.thumbs.length}}" class="thumb-row flex-row">
+          <image wx:for="{{item.thumbs}}" wx:for-item="img" wx:key="*this" class="thumb" src="{{img}}" mode="aspectFill" />
+        </view>
+      </view>
+      <view wx:if="{{caseDetail.replies.length}}" class="section-title">过程记录（参与方可见）</view>
+      <view wx:for="{{caseDetail.replies}}" wx:key="objectId" class="card reply-card">
+        <text class="reply-role">{{item.roleLabel}}</text>
+        <text class="reply-content">{{item.content}}</text>
+        <view wx:if="{{item.thumbs.length}}" class="thumb-row flex-row">
+          <image wx:for="{{item.thumbs}}" wx:for-item="img" wx:key="*this" class="thumb" src="{{img}}" mode="aspectFill" />
+        </view>
+      </view>
+      <view wx:if="{{caseDetail.canReply}}" class="card form-card">
+        <textarea
+          class="reason-input"
+          placeholder="{{meta.placeholder}}"
+          maxlength="500"
+          value="{{reason}}"
+          bindinput="onReasonInput"
+        />
+        <view class="evidence-block">
+          <text class="evidence-label">凭证图片（选填）</text>
+          <view class="img-grid flex-row">
+            <view wx:for="{{evidenceImages}}" wx:key="id" class="img-cell">
+              <image class="img-preview" src="{{item.url}}" mode="aspectFill" />
+              <view class="img-del" data-index="{{index}}" bindtap="onRemoveImage">×</view>
+            </view>
+            <view
+              wx:if="{{evidenceImages.length < maxImages}}"
+              class="img-add flex-center"
+              bindtap="onChooseImages"
+            >
+              <text class="add-icon">+</text>
+            </view>
+          </view>
+        </view>
+        <button class="btn-primary submit-btn" loading="{{submitting}}" bindtap="onSubmit">{{meta.submit}}</button>
+      </view>
+    </block>
+  </block>
+
+  <!-- 提交申诉/举报 -->
+  <block wx:else>
+    <view class="card form-card">
+      <textarea
+        class="reason-input"
+        placeholder="{{meta.placeholder}}"
+        maxlength="500"
+        value="{{reason}}"
+        bindinput="onReasonInput"
+      />
+      <view class="evidence-block">
+        <text class="evidence-label">凭证图片（选填，最多 {{maxImages}} 张）</text>
+        <view class="img-grid flex-row">
+          <view wx:for="{{evidenceImages}}" wx:key="id" class="img-cell">
+            <image class="img-preview" src="{{item.url}}" mode="aspectFill" />
+            <view class="img-del" data-index="{{index}}" bindtap="onRemoveImage">×</view>
+          </view>
+          <view
+            wx:if="{{evidenceImages.length < maxImages}}"
+            class="img-add flex-center"
+            bindtap="onChooseImages"
+          >
+            <text class="add-icon">+</text>
+          </view>
+        </view>
+      </view>
+      <button class="btn-primary submit-btn" loading="{{submitting}}" bindtap="onSubmit">{{meta.submit}}</button>
+    </view>
+    <text class="hint text-muted">提交后由管理员处理；同一商品的多条举报将自动归入同一案卷。</text>
+  </block>
+</view>

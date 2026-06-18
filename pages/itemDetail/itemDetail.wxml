@@ -1,1 +1,150 @@
-<view class="placeholder">商品详情（其他同学实现）</view>
+<view class="detail-page page-safe-bottom" wx:if="{{!loading && item}}">
+  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
+  <swiper class="gallery" indicator-dots circular>
+    <swiper-item wx:for="{{images}}" wx:key="*this">
+      <image class="gallery-img" src="{{item}}" mode="aspectFill" binderror="onGalleryImageError" data-index="{{index}}" />
+    </swiper-item>
+  </swiper>
+  <view wx:if="{{soldOut}}" class="sold-mask flex-center">{{item.status === 'OFFLINE' ? '已取消' : '已结束'}}</view>
+
+  <!-- 付款锁定提示 -->
+  <view class="lock-scroll" wx:if="{{lockInfo}}">
+    <text class="lock-text" wx:if="{{isLockedByMe}}">
+      ⏳ 您已付款，等待卖家确认（剩余 {{countdown}}）
+    </text>
+    <text class="lock-text" wx:else>
+      ⏳ 已被 {{lockInfo.buyerId}} 付款锁定，剩余 {{countdown}}
+    </text>
+  </view>
+
+  <!-- 拍下者列表（仅买家自己可见） -->
+  <view wx:if="{{!isOwner && !lockInfo && lockBuyers.length > 0}}" class="lock-buyers-section">
+    <text class="lock-buyers-title">以下用户已拍下：</text>
+    <block wx:for="{{lockBuyers}}" wx:key="buyerId">
+      <text class="lock-buyer-item">{{item.buyerId}}（{{item.lockTime}}）</text>
+    </block>
+  </view>
+
+  <view class="detail-body {{showOwnerBar || showItemOwnerBar || showBuyerBar || showErrandAcceptBar || showErrandContactBar ? 'has-bar' : ''}}">
+    <view class="title-row flex-row">
+      <text class="detail-title">{{item.title}}</text>
+      <view class="{{item.statusClass}}">{{item.statusLabel}}</view>
+    </view>
+    <text class="detail-price">{{item.priceLabel}} ¥ {{item.price}}</text>
+    <text class="tag-info" wx:if="{{item.category && !item.isErrand}}">{{item.category}}</text>
+
+    <view wx:if="{{isOwner && isErrand}}" class="section card-flat contact-section">
+      <text class="section-title">联系信息</text>
+      <view class="info-line" wx:if="{{contactPhone}}">
+        <text class="info-k">我的电话</text>
+        <text class="phone-val" bindtap="onCopyPhone" data-phone="{{contactPhone}}">{{contactPhone}}</text>
+        <text class="copy-hint">点击复制</text>
+      </view>
+      <view wx:if="{{hasRunner}}" class="runner-block">
+        <text class="runner-title">接单人</text>
+        <view class="info-line">
+          <text class="info-k">昵称</text>{{runner.nickName}}
+        </view>
+        <view class="info-line" wx:if="{{runner.phone}}">
+          <text class="info-k">电话</text>
+          <text class="phone-val" bindtap="onCopyPhone" data-phone="{{runner.phone}}">{{runner.phone}}</text>
+          <text class="copy-hint">点击复制</text>
+        </view>
+        <view class="info-line" wx:if="{{runner.wechatId}}">
+          <text class="info-k">微信</text>{{runner.wechatId}}
+        </view>
+      </view>
+      <view wx:elif="{{item.status === 'IN_TRADING'}}" class="hint-muted">
+        已接单，接单人电话将在对方完善资料或创建订单后显示
+      </view>
+    </view>
+
+    <view class="seller-card card-flat flex-row" wx:if="{{!isOwner || !isErrand}}">
+      <view class="seller-avatar flex-center">🎓</view>
+      <view class="flex-col">
+        <text class="seller-name">校内用户</text>
+        <text class="text-caption credit-caption {{sellerCreditTone}}">{{sellerCreditText}}</text>
+      </view>
+    </view>
+
+    <view class="section card-flat">
+      <text class="section-title">{{item.isErrand ? '任务说明' : '商品描述'}}</text>
+      <text class="desc-text">{{item.description || '暂无描述'}}</text>
+    </view>
+
+    <view wx:if="{{item.isErrand}}" class="section card-flat">
+      <text class="section-title">跑腿信息</text>
+      <view class="info-line"><text class="info-k">取件</text>{{item.pickupAddr}}</view>
+      <view class="info-line"><text class="info-k">送达</text>{{item.deliveryAddr}}</view>
+      <view class="info-line" wx:if="{{item.deadline}}"><text class="info-k">时间</text>{{item.deadline}}</view>
+    </view>
+  </view>
+
+  <!-- 跑腿发布者操作栏 -->
+  <view class="action-bar owner-bar flex-row" wx:if="{{showOwnerBar}}">
+    <block wx:if="{{item.status === 'ON_SALE'}}">
+      <button class="btn-outline action-btn" bindtap="onEditErrand">编辑</button>
+      <button class="btn-ghost action-btn danger" bindtap="onOffline">取消跑腿</button>
+    </block>
+    <block wx:elif="{{item.status === 'IN_TRADING'}}">
+      <button class="btn-outline action-btn" bindtap="onOpenGroupChat">任务群聊</button>
+      <button class="btn-outline action-btn" bindtap="onViewErrandOrder">查看订单</button>
+    </block>
+    <block wx:elif="{{item.status === 'OFFLINE'}}">
+      <button class="btn-primary action-btn main full" bindtap="onOnline">重新发布</button>
+    </block>
+  </view>
+
+  <!-- 普通物品发布者操作栏 -->
+  <view class="action-bar flex-row" wx:if="{{showItemOwnerBar}}">
+    <button class="btn-outline action-btn" bindtap="onEditItem">编辑</button>
+    <button class="btn-ghost action-btn danger" bindtap="onOfflineItem">取消发布</button>
+  </view>
+  <!-- 物品有买家拍下/交易中：卖家查看订单 -->
+  <view class="action-bar flex-row" wx:if="{{showGoodsSellerOrderBar}}">
+    <text class="action-bar-tip text-muted">{{item.status === 'IN_TRADING' ? '交易进行中' : '有买家拍下'}}</text>
+    <button class="btn-primary action-btn" bindtap="onViewGoodsOrder">查看订单</button>
+  </view>
+
+  <!-- 买家操作区 -->
+  <view class="action-bar action-bar-buyer" wx:if="{{showBuyerBar}}">
+    <view class="action-bar-main flex-row">
+      <!-- 未被锁定 -> 可拍下 -->
+      <button wx:if="{{canLock}}" class="btn-primary action-btn buy-btn" loading="{{locking}}" bindtap="onLock">拍下</button>
+      <!-- 自己已拍下（等待卖家确认）-> 查看订单 / 取消拍下 -->
+      <button wx:if="{{isLockedByMe}}" class="btn-primary action-btn buy-btn" bindtap="onViewMyOrder">查看订单</button>
+      <button wx:if="{{isLockedByMe}}" class="btn-outline action-btn" bindtap="onCancelLock">取消拍下</button>
+      <!-- 被其他买家锁定 -> 已锁定 -->
+      <button wx:if="{{!canLock && !isLockedByMe}}" class="btn-disabled action-btn" disabled>已锁定</button>
+
+      <!-- 仅在商品仍可购买时显示购物车 -->
+      <button
+        wx:if="{{canLock}}"
+        class="btn-outline action-btn cart-btn"
+        loading="{{carting}}"
+        bindtap="onCart"
+      >加入购物车</button>
+    </view>
+    <view class="action-bar-sub flex-row">
+      <view class="sub-link-btn {{carting || buying ? 'sub-disabled' : ''}}" bindtap="onContact">联系卖家</view>
+      <view class="sub-link-btn sub-link-muted" catchtap="onReport">举报</view>
+    </view>
+  </view>
+
+  <!-- 跑腿接单栏 -->
+  <view class="action-bar flex-row errand-bar" wx:if="{{showErrandAcceptBar}}">
+    <button class="btn-outline action-btn" bindtap="onContact">联系发布者</button>
+    <button class="btn-primary action-btn main" bindtap="onAcceptErrand">我要接单</button>
+  </view>
+
+  <!-- 跑腿群聊栏 -->
+  <view class="action-bar flex-row errand-bar" wx:if="{{showErrandContactBar && !showErrandAcceptBar}}">
+    <button class="btn-primary action-btn main" bindtap="onOpenGroupChat">任务群聊</button>
+    <button wx:if="{{isOwner && hasRunner}}" class="btn-outline action-btn" bindtap="onContactRunner">联系骑手</button>
+    <button wx:if="{{isRunner}}" class="btn-outline action-btn" bindtap="onContact">联系发布者</button>
+  </view>
+</view>
+
+<view wx:if="{{loading}}" class="detail-loading flex-center">
+  <text class="text-muted">加载中...</text>
+</view>

@@ -1,7 +1,213 @@
-<view class="page-index">
-  <view class="title">校园二手交易平台</view>
-  <view class="welcome text-muted">
-    欢迎来到校园二手交易，在这里发现与分享闲置好物。
+<view class="page-index page-safe-bottom">
+  <view class="top-panel">
+    <view class="search-inner flex-row">
+      <text class="search-icon">⌕</text>
+      <input
+        class="search-input"
+        placeholder="搜索书籍、物品、跑腿"
+        value="{{keyword}}"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+        confirm-type="search"
+      />
+      <view class="ai-entry" bindtap="goToAiChat">
+        <text class="ai-entry-icon">🤖</text>
+        <view wx:if="{{aiUnreadCount > 0}}" class="ai-badge">
+          {{aiUnreadCount > 99 ? '99+' : aiUnreadCount}}
+        </view>
+      </view>
+    </view>
   </view>
-  <!-- TODO: 首页商品列表、搜索、分类等功能由其他同学实现 -->
+
+  <swiper
+    class="home-swiper"
+    indicator-dots
+    circular
+    autoplay
+    interval="4200"
+    duration="450"
+    indicator-color="rgba(255,255,255,0.42)"
+    indicator-active-color="#ffffff"
+  >
+    <swiper-item wx:for="{{banners}}" wx:key="id">
+      <view
+        class="banner-slide {{item.tone}}"
+        data-type="{{item.type}}"
+        data-category="{{item.category}}"
+        bindtap="onBannerTap"
+      >
+        <view class="banner-copy">
+          <text class="banner-badge">{{item.badge}}</text>
+          <text class="banner-title">{{item.title}}</text>
+          <text class="banner-subtitle">{{item.subtitle}}</text>
+        </view>
+        <view class="banner-action">查看</view>
+      </view>
+    </swiper-item>
+  </swiper>
+
+  <view class="quick-grid">
+    <view
+      wx:for="{{quickEntries}}"
+      wx:key="id"
+      class="quick-card"
+      data-type="{{item.type}}"
+      data-category="{{item.category}}"
+      data-action="{{item.action}}"
+      bindtap="onQuickTap"
+    >
+      <view class="quick-icon">{{item.icon}}</view>
+      <text class="quick-title">{{item.title}}</text>
+      <text class="quick-desc">{{item.desc}}</text>
+    </view>
+  </view>
+
+  <view class="weather-card" bindtap="onWeatherTap">
+    <view class="widget-head flex-row flex-between">
+      <text class="widget-title">校园天气</text>
+      <text class="widget-status">{{weather.updateText}}</text>
+    </view>
+    <view class="weather-main flex-row">
+      <text class="weather-temp">{{weather.temp}}°</text>
+      <view class="weather-copy flex-col">
+        <text class="weather-condition">{{weather.condition}} · {{weather.campus}}</text>
+        <text class="weather-meta">{{weather.wind}} / 湿度 {{weather.humidity}}</text>
+      </view>
+    </view>
+    <text class="weather-tip">{{weather.tip}}</text>
+  </view>
+
+  <scroll-view scroll-x class="category-scroll" enable-flex>
+    <view
+      wx:for="{{categoryShortcuts}}"
+      wx:key="id"
+      class="category-chip"
+      data-type="{{item.type}}"
+      data-category="{{item.category}}"
+      bindtap="onCategoryTap"
+    >{{item.name}}</view>
+  </scroll-view>
+
+  <view class="headline-section">
+    <view class="section-head flex-row flex-between">
+      <view class="section-title-wrap flex-col">
+        <text class="section-title">校园头条</text>
+        <text class="section-subtitle">交易提醒与服务动态</text>
+      </view>
+    </view>
+    <view class="headline-list">
+      <view
+        wx:for="{{headlines}}"
+        wx:key="id"
+        class="headline-item"
+        data-id="{{item.id}}"
+        bindtap="onHeadlineTap"
+      >
+        <text class="headline-tag">{{item.tag}}</text>
+        <view class="headline-copy flex-col">
+          <text class="headline-title">{{item.title}}</text>
+          <text class="headline-desc">{{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="list-loading">
+    <view wx:for="{{[1,2,3]}}" wx:key="*this" class="skeleton-card card-flat">
+      <view class="skeleton sk-thumb"></view>
+      <view class="sk-lines flex-col">
+        <view class="skeleton sk-line"></view>
+        <view class="skeleton sk-line mid"></view>
+        <view class="skeleton sk-line short"></view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="home-content">
+    <view class="featured-section">
+      <view class="section-head flex-row flex-between">
+        <view class="section-title-wrap flex-col">
+          <text class="section-title">今日推荐</text>
+          <text class="section-subtitle">{{recommendationNote}}</text>
+        </view>
+        <view class="more-link" data-type="all" bindtap="onMoreTap">更多</view>
+      </view>
+
+      <scroll-view wx:if="{{featuredItems.length}}" scroll-x class="featured-scroll" enable-flex>
+        <view
+          wx:for="{{featuredItems}}"
+          wx:key="objectId"
+          class="featured-card"
+          data-id="{{item.objectId}}"
+          data-type="{{item.recommendType}}"
+          data-category="{{item.category}}"
+          bindtap="onItemTap"
+        >
+          <image class="featured-thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
+          <text class="featured-title">{{item.title}}</text>
+          <view class="featured-bottom flex-row flex-between">
+            <text class="featured-price">{{item.priceText}}</text>
+            <text class="featured-tag">{{item.category}}</text>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view wx:else class="section-empty card-flat">
+        <text>暂无推荐内容</text>
+      </view>
+    </view>
+
+    <view wx:for="{{sections}}" wx:for-item="section" wx:key="key" class="home-section">
+      <view class="section-head flex-row flex-between">
+        <view class="section-title-wrap flex-col">
+          <text class="section-title">{{section.title}}</text>
+          <text class="section-subtitle">{{section.subtitle}}</text>
+        </view>
+        <view class="more-link" data-type="{{section.key}}" bindtap="onMoreTap">更多</view>
+      </view>
+
+      <view wx:if="{{!section.items.length}}" class="section-empty card-flat">
+        <text>{{section.emptyText}}</text>
+      </view>
+
+      <view wx:else class="goods-list">
+        <view
+          wx:for="{{section.items}}"
+          wx:for-item="goods"
+          wx:key="objectId"
+          class="goods-card card-flat"
+          data-id="{{goods.objectId}}"
+          data-type="{{goods.recommendType}}"
+          data-category="{{goods.category}}"
+          bindtap="onItemTap"
+        >
+          <image class="goods-thumb" src="{{goods.coverImage || placeholder}}" mode="aspectFill" />
+          <view class="goods-info flex-col">
+            <view>
+              <view class="goods-title-row flex-row">
+                <text class="goods-title">{{goods.title}}</text>
+                <text wx:if="{{goods.isParttime}}" class="tag-parttime">跑腿</text>
+              </view>
+              <text wx:if="{{goods.description}}" class="goods-desc">{{goods.description}}</text>
+              <text wx:if="{{goods.routeHint}}" class="route-text">{{goods.routeHint}}</text>
+            </view>
+            <view class="goods-bottom flex-row flex-between">
+              <view class="price-line flex-row">
+                <text class="price-label">{{goods.priceLabel}}</text>
+                <text class="goods-price">{{goods.priceText}}</text>
+              </view>
+              <view class="goods-tags flex-row">
+                <text wx:if="{{goods.statusLabel}}" class="{{goods.statusClass}}">{{goods.statusLabel}}</text>
+                <text class="tag-info">{{goods.category}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="footer-hint text-muted text-center">校园二手 · 找商品 / 找跑腿</view>
+
+  <view class="fab-publish" bindtap="goPublish">+</view>
 </view>

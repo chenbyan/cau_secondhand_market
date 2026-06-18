@@ -1,7 +1,8 @@
 {
   "appid": "wx84eb83299b4116c0",
+  "cloudfunctionRoot": "wxcloudfunctions/",
   "compileType": "miniprogram",
-  "libVersion": "trial",
+  "libVersion": "3.16.1",
   "packOptions": {
     "ignore": [],
     "include": []

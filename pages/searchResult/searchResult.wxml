@@ -1,0 +1,93 @@
+<view class="page-search page-safe-bottom">
+  <view class="search-panel">
+    <view class="search-box flex-row">
+      <text class="search-icon">⌕</text>
+      <input
+        class="search-input"
+        placeholder="搜索书籍、物品、跑腿"
+        value="{{keyword}}"
+        bindinput="onKeywordInput"
+        bindconfirm="onSearchConfirm"
+        confirm-type="search"
+      />
+      <text wx:if="{{keyword}}" class="clear-keyword" bindtap="onClearKeyword">×</text>
+    </view>
+  </view>
+
+  <view class="type-tabs flex-row">
+    <view
+      wx:for="{{typeOptions}}"
+      wx:key="key"
+      class="type-tab {{activeType === item.key ? 'active' : ''}}"
+      data-type="{{item.key}}"
+      bindtap="onTypeTap"
+    >{{item.name}}</view>
+  </view>
+
+  <scroll-view scroll-x class="cat-scroll" enable-flex>
+    <view
+      wx:for="{{categories}}"
+      wx:key="key"
+      class="cat-chip {{activeCategory === item.key ? 'active' : ''}}"
+      data-category="{{item.key}}"
+      bindtap="onCategoryTap"
+    >{{item.name}}</view>
+  </scroll-view>
+
+  <view class="result-head flex-row flex-between">
+    <text class="result-title">{{titleText}}</text>
+    <text class="result-count">{{list.length}} 条</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="list-loading">
+    <view wx:for="{{[1,2,3]}}" wx:key="*this" class="skeleton-card card-flat">
+      <view class="skeleton sk-thumb"></view>
+      <view class="sk-lines flex-col">
+        <view class="skeleton sk-line"></view>
+        <view class="skeleton sk-line mid"></view>
+        <view class="skeleton sk-line short"></view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{!list.length}}" class="empty-state flex-col flex-center">
+    <text class="empty-title">没有找到相关内容</text>
+    <text class="text-muted">换个关键词或分类试试</text>
+  </view>
+
+  <view wx:else class="result-list">
+    <view
+      wx:for="{{list}}"
+      wx:key="objectId"
+      class="result-card card-flat"
+      data-id="{{item.objectId}}"
+      bindtap="onOpenDetail"
+    >
+      <image class="item-thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
+      <view class="item-info flex-col">
+        <view class="item-top flex-row flex-between">
+          <text class="item-title">{{item.title}}</text>
+          <text wx:if="{{item.isParttime}}" class="tag-parttime">跑腿</text>
+        </view>
+        <text wx:if="{{item.description}}" class="item-desc">{{item.description}}</text>
+        <text wx:if="{{item.routeHint}}" class="route-text">{{item.routeHint}}</text>
+        <view class="item-bottom flex-row flex-between">
+          <view class="price-line flex-row">
+            <text class="price-label">{{item.priceLabel}}</text>
+            <text class="item-price">{{item.priceText}}</text>
+          </view>
+          <view class="goods-tags flex-row">
+            <text wx:if="{{item.statusLabel}}" class="{{item.statusClass}}">{{item.statusLabel}}</text>
+            <text class="tag-info">{{item.category}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{!loading && list.length}}" class="bottom-state text-muted text-center">
+    <text wx:if="{{loadingMore}}">加载中...</text>
+    <text wx:elif="{{!hasMore}}">没有更多了</text>
+    <text wx:else>上拉加载更多</text>
+  </view>
+</view>

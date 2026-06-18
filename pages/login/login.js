@@ -1,9 +1,14 @@
 const auth = require('../../utils/auth.js')
 const util = require('../../utils/util.js')
+const campusPreference = require('../../utils/campusPreference.js')
 
 Page({
   data: {
     loading: false
+  },
+
+  onBack() {
+    util.goBack()
   },
 
   async onWxLogin() {
@@ -13,6 +18,11 @@ Page({
       const { isNewUser } = await auth.wxLogin()
       const app = getApp()
       app.syncGlobalUser()
+      try {
+        await campusPreference.detectCampusByLocation()
+      } catch (locErr) {
+        console.warn('登录后定位校区失败', locErr)
+      }
       util.showToast('登录成功', 'success')
       if (isNewUser) {
         wx.redirectTo({ url: '/pages/my/mySetting/mySetting' })

@@ -46,6 +46,15 @@ const validateEmail = (email) => {
 
 const validatePhone = (phone) => /^1\d{10}$/.test(phone || '')
 
+const goBack = () => {
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  if (pages.length > 1) {
+    wx.navigateBack({ delta: 1 })
+    return
+  }
+  wx.switchTab({ url: '/pages/index/index' })
+}
+
 module.exports = {
   formatTime,
   showToast,
@@ -53,5 +62,6 @@ module.exports = {
   hideLoading,
   showModal,
   validateEmail,
-  validatePhone
+  validatePhone,
+  goBack
 }

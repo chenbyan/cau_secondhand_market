@@ -1,0 +1,132 @@
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #eef1f5;
+}
+
+.chat-tip {
+  margin: 16rpx 24rpx 0;
+  padding: 20rpx 24rpx;
+}
+
+.tip-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.tip-sub {
+  font-size: 22rpx;
+  color: #8a9399;
+  margin-top: 8rpx;
+  display: block;
+}
+
+.tip-my-role {
+  font-size: 22rpx;
+  color: #2d5a8e;
+  font-weight: 600;
+  margin-top: 6rpx;
+  display: block;
+}
+
+.member-tags {
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.member-tag {
+  font-size: 22rpx;
+  padding: 6rpx 14rpx;
+  background: #e8f0f8;
+  color: #4a7ab8;
+  border-radius: 8rpx;
+}
+
+.msg-scroll {
+  flex: 1;
+  padding: 16rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.msg-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 24rpx;
+}
+
+.msg-row.self {
+  justify-content: flex-end;
+}
+
+.msg-bubble {
+  max-width: 78%;
+  background: #fff;
+  border-radius: 16rpx 16rpx 16rpx 4rpx;
+  padding: 16rpx 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.msg-row.self .msg-bubble {
+  background: #dce9f7;
+  border-radius: 16rpx 16rpx 4rpx 16rpx;
+}
+
+.msg-role {
+  display: block;
+  font-size: 20rpx;
+  color: #4a7ab8;
+  margin-bottom: 4rpx;
+}
+
+.msg-name {
+  font-size: 22rpx;
+  color: #8a9399;
+  display: block;
+  margin-bottom: 6rpx;
+}
+
+.msg-content {
+  font-size: 28rpx;
+  color: #333;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.msg-time {
+  font-size: 20rpx;
+  color: #aaa;
+  margin-top: 8rpx;
+  display: block;
+  text-align: right;
+}
+
+.empty-chat {
+  padding: 80rpx 0;
+}
+
+.input-bar {
+  padding: 16rpx 20rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1rpx solid #e8ecf0;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.chat-input {
+  flex: 1;
+  background: #f7f9fc;
+  border-radius: 12rpx;
+  padding: 18rpx 20rpx;
+  font-size: 28rpx;
+}
+
+.send-btn {
+  flex-shrink: 0;
+  padding: 0 28rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 28rpx;
+}

@@ -78,3 +78,12 @@
   font-size: 80rpx;
   margin-bottom: 16rpx;
 }
+
+.tag-errand {
+  font-size: 20rpx;
+  color: #fff;
+  background: #2d5a8e;
+  border-radius: 6rpx;
+  padding: 2rpx 10rpx;
+  margin-right: 8rpx;
+}
