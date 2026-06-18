@@ -54,7 +54,11 @@ Page({
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 2 })
+      const app = getApp()
+      this.getTabBar().setData({
+        selected: 2,
+        messageBadge: (app && app.globalData.unreadNoticeCount) || 0
+      })
     }
     this.refreshView()
   },

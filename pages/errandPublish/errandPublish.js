@@ -95,9 +95,9 @@ Page({
   async loadItem(id) {
     try {
       util.showLoading('加载中...')
-      const row = await publish.getItem(id)
+      const row = await publish.getErrand(id)
       util.hideLoading()
-      if (!row || row.postType !== publish.POST_TYPE.ERRAND) {
+      if (!row) {
         util.showToast('记录不存在或类型不匹配')
         setTimeout(() => wx.navigateBack(), 800)
         return
@@ -121,6 +121,7 @@ Page({
       images = await cloudImage.resolveImageUrls(images)
       const dl = this.parseDeadline(row.deadline)
       const contactPhone =
+        row.phone ||
         row.contactPhone ||
         publish.parseContactFromDescription(row.description) ||
         ''
@@ -355,14 +356,12 @@ Page({
     this.setData({ submitting: true })
     try {
       util.showLoading('提交中...')
-      const descWithPhone = contactPhone
-        ? `${form.description.trim()}\n联系电话：${contactPhone}`
-        : form.description.trim()
-      await publish.saveItem(
+      await publish.saveErrand(
         {
           postType: publish.POST_TYPE.ERRAND,
           title: form.title.trim(),
-          description: descWithPhone,
+          description: form.description.trim(),
+          phone: contactPhone || undefined,
           price,
           category: '跑腿',
           errandCategory: form.errandCategory,

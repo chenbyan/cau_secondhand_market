@@ -10,15 +10,49 @@ const NOTICE_TYPE = {
   REPORT_REPLY: 'report_reply',
   DISPUTE_RECEIVED: 'dispute_received',
   DISPUTE_UPDATE: 'dispute_update',
-  CASE_CLOSED: 'case_closed'
+  CASE_CLOSED: 'case_closed',
+  // 订单状态变更通知
+  ORDER_LOCKED: 'order_locked',
+  ORDER_CONFIRMED: 'order_confirmed',
+  BUYER_PAID: 'buyer_paid',
+  SELLER_RECEIVED: 'seller_received',
+  ORDER_CANCELLED: 'order_cancelled',
+  ERRAND_REQUESTED: 'errand_requested',
+  ERRAND_ACCEPTED: 'errand_accepted',
+  ERRAND_CONFIRMED: 'errand_confirmed',
+  ERRAND_CANCEL_ACCEPT: 'errand_cancel_accept',
+  ERRAND_COMPLETED: 'errand_completed',
+  ORDER_REVIEWED: 'order_reviewed',
+  // 系统类通知
+  CREDIT_CHANGED: 'credit_changed',
+  ITEM_OFFLINE: 'item_offline',
 }
+
+// 系统通知入口合并展示的类型（显示在「系统通知」一行）
+const ADMIN_TYPES = [
+  'report_received', 'report_reply', 'dispute_received', 'dispute_update', 'case_closed',
+  'credit_changed', 'item_offline'
+]
 
 const TYPE_LABEL = {
   report_received: '收到举报',
   report_reply: '案卷回应',
   dispute_received: '订单申诉',
   dispute_update: '案卷更新',
-  case_closed: '处理结果'
+  case_closed: '处理结果',
+  order_locked: '买家已拍下',
+  order_confirmed: '卖家已确认',
+  buyer_paid: '买家已付款',
+  seller_received: '交易完成',
+  order_cancelled: '订单已取消',
+  errand_requested: '跑腿申请',
+  errand_accepted: '骑手已接单',
+  errand_confirmed: '接单已确认',
+  errand_cancel_accept: '骑手已取消',
+  errand_completed: '跑腿已完成',
+  order_reviewed: '收到评价',
+  credit_changed: '信用分变更',
+  item_offline: '商品下架',
 }
 
 async function createNotice(payload) {
@@ -175,7 +209,9 @@ function syncTabBadge() {
   if (!app) return
   countUnread()
     .then((n) => {
-      app.globalData.unreadNoticeCount = n
+      // 保留上次 messages 页写入的聊天未读数（存在 globalData.chatUnreadCount 里）
+      const chatUnread = (app.globalData && app.globalData.chatUnreadCount) || 0
+      app.globalData.unreadNoticeCount = n + chatUnread
       if (typeof app.refreshTabBadge === 'function') {
         app.refreshTabBadge()
       }
@@ -183,15 +219,72 @@ function syncTabBadge() {
     .catch(() => {})
 }
 
+/** 订单状态变更通知（复用 disputeId 存 orderId，caseKey 存 itemId） */
+async function notifyOrderEvent(toUserId, type, title, content, orderId, itemId) {
+  if (!toUserId) return null
+  return createNotice({
+    userId: toUserId,
+    type,
+    title,
+    content: String(content || ''),
+    caseKey: itemId || '',
+    disputeId: orderId || ''
+  })
+}
+
+/** 通知列表分组：系统通知（admin）+ 订单通知（每个订单一组） */
+async function listNoticesGrouped(limit = 100) {
+  const all = await listNotices(limit)
+  const sysNotices = all.filter((n) => ADMIN_TYPES.indexOf(n.type) >= 0)
+  const orderNotices = all.filter((n) => ADMIN_TYPES.indexOf(n.type) < 0)
+
+  const sysGroup = {
+    unread: sysNotices.filter((n) => !n.read).length,
+    lastTitle: sysNotices.length ? sysNotices[0].title : '',
+    lastContent: sysNotices.length ? sysNotices[0].content : '',
+    timeText: sysNotices.length ? sysNotices[0].timeText : '',
+    count: sysNotices.length,
+    notices: sysNotices
+  }
+
+  // group by orderId (disputeId field), sorted by most-recent first
+  const orderMap = {}
+  for (const n of orderNotices) {
+    const key = n.disputeId || ('_' + n.objectId)
+    if (!orderMap[key]) {
+      orderMap[key] = { orderId: n.disputeId, itemId: n.caseKey, notices: [], unread: 0 }
+    }
+    orderMap[key].notices.push(n)
+    if (!n.read) orderMap[key].unread++
+  }
+  const orderGroups = Object.values(orderMap).map((g) => {
+    const first = g.notices[0]
+    return {
+      orderId: g.orderId,
+      itemId: g.itemId,
+      notices: g.notices,
+      unread: g.unread,
+      lastTitle: first ? first.title : '',
+      lastContent: first ? first.content : '',
+      timeText: first ? first.timeText : ''
+    }
+  })
+
+  return { sysGroup, orderGroups }
+}
+
 module.exports = {
   NOTICE_TYPE,
+  ADMIN_TYPES,
   TYPE_LABEL,
   createNotice,
   notifyReportReceived,
   notifyDisputeReceived,
   notifyCaseReply,
   notifyCaseUpdate,
+  notifyOrderEvent,
   listNotices,
+  listNoticesGrouped,
   countUnread,
   markRead,
   markAllRead,

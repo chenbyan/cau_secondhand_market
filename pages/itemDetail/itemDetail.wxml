@@ -141,7 +141,7 @@
   <view class="action-bar flex-row errand-bar" wx:if="{{showErrandContactBar && !showErrandAcceptBar}}">
     <button class="btn-primary action-btn main" bindtap="onOpenGroupChat">任务群聊</button>
     <button wx:if="{{isOwner && hasRunner}}" class="btn-outline action-btn" bindtap="onContactRunner">联系骑手</button>
-    <button wx:if="{{isRunner}}" class="btn-outline action-btn" bindtap="onContact">联系发布者</button>
+    <button wx:if="{{isRunner}}" class="btn-outline action-btn" bindtap="onViewErrandOrder">确认接单</button>
   </view>
 </view>
 

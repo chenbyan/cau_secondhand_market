@@ -4,6 +4,7 @@
 const Bmob = require('./bmob.js')
 const auth = require('./auth.js')
 const sysConfig = require('./sysConfig.js')
+const notice = require('./notice.js')
 
 const DEFAULT_SCORE = 100
 const MIN_SCORE = 0
@@ -168,6 +169,14 @@ async function applyDelta(userId, delta, options = {}) {
   })
 
   await refreshCurrentUser(userId)
+
+  // 通知用户信用分发生了变化
+  notice.createNotice({
+    userId,
+    type: notice.NOTICE_TYPE.CREDIT_CHANGED,
+    title: actualDelta >= 0 ? `信用分 +${actualDelta}` : `信用分 ${actualDelta}`,
+    content: `${options.reason || '信用分变更'} · 当前信用分：${afterScore}${shouldFreeze ? ' · 账号已冻结' : ''}`
+  }).catch(() => {})
 
   return {
     userId,

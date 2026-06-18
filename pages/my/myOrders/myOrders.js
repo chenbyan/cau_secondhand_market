@@ -1,6 +1,7 @@
 const auth = require('../../../utils/auth.js')
 const util = require('../../../utils/util.js')
 const Bmob = require('../../../utils/bmob.js')
+const cloudImage = require('../../../utils/cloudImage.js')
 
 const STATUS_MAP = {
   PENDING_CONFIRM: '待卖家确认',
@@ -122,15 +123,20 @@ Page({
         list = (list || []).filter(row => row.postType !== 'errand')
       }
       const isErrandType = type === 'errand'
-      const orders = (list || []).map((row) => {
+      const itemCache = {}
+      const orders = []
+      for (let i = 0; i < (list || []).length; i++) {
+        const row = list[i]
+        const itemImage = await cloudImage.resolveOrderItemImage(row, itemCache)
         const sMap = (isErrandType || row.postType === 'errand') ? ERRAND_STATUS_MAP : STATUS_MAP
-        return {
+        orders.push({
           ...row,
+          itemImage,
           statusLabel: sMap[row.status] || row.status || '未知',
           createdAtText: row.createdAt ? util.formatTime(row.createdAt) : '',
           isErrand: row.postType === 'errand'
-        }
-      })
+        })
+      }
       const merged = reset ? orders : this.data.orders.concat(orders)
       this.setData({
         orders: merged,

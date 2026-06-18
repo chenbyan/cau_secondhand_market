@@ -299,7 +299,11 @@ Page({
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 0 })
+      const app = getApp()
+      this.getTabBar().setData({
+        selected: 0,
+        messageBadge: (app && app.globalData.unreadNoticeCount) || 0
+      })
     }
     const selectedCampus = getInitialCampus()
     this.setData({

@@ -7,7 +7,8 @@ App({
     isLoggedIn: false,
     userInfo: null,
     campusVerified: false,
-    unreadNoticeCount: 0
+    unreadNoticeCount: 0,
+    chatUnreadCount: 0
   },
 
   onLaunch() {

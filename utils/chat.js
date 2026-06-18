@@ -8,6 +8,7 @@ const publish = require('./publish.js')
 
 const LOCAL_ROOMS_KEY = 'chatRoomsLocal'
 const LOCAL_MSG_PREFIX = 'chatMsgs_'
+const CHAT_LAST_READ_KEY = 'chatLastRead'
 
 // null = 未检测, true = 可用, false = 不可用（表不存在）
 let bmobAvailable = null
@@ -106,8 +107,9 @@ const ensureBmobRoom = async (row, currentUserId) => {
   rowNew.set('memberIds', JSON.stringify(members))
   rowNew.set('postType', row.postType || publish.POST_TYPE.GOODS)
   rowNew.set('lastMsg', '群聊已创建，快发第一条消息吧')
-  await rowNew.save()
-  return rowNew.objectId
+  // SDK save() returns { objectId, createdAt } — the original query object is NOT mutated
+  const saved = await rowNew.save()
+  return saved.objectId
 }
 
 /**
@@ -118,7 +120,10 @@ const openChatForItem = async (itemId, options = {}) => {
     return null
   }
   const u = auth.getUserInfo()
-  const row = await publish.getItem(itemId)
+  // options.src === 'errand' 时从 Errand 表查询（跑腿已迁移至独立表）
+  const row = options.src === 'errand'
+    ? await publish.getErrand(itemId)
+    : await publish.getItem(itemId)
   if (!row) {
     wx.showToast({ title: '内容不存在', icon: 'none' })
     return null
@@ -165,7 +170,8 @@ const listRoomsForUser = async (userId) => {
 }
 
 const listMessages = async (roomId) => {
-  if (bmobAvailable === false || (roomId && roomId.startsWith('local_'))) {
+  if (!roomId) return []
+  if (bmobAvailable === false || roomId.startsWith('local_')) {
     const key = LOCAL_MSG_PREFIX + roomId
     return wx.getStorageSync(key) || []
   }
@@ -191,6 +197,7 @@ const listMessages = async (roomId) => {
 }
 
 const sendMessage = async (roomId, content) => {
+  if (!roomId) throw new Error('roomId 为空，无法发送消息')
   const u = auth.getUserInfo()
   if (!u || !u.objectId) throw new Error('请先登录')
   const text = (content || '').trim()
@@ -234,6 +241,71 @@ const sendMessage = async (roomId, content) => {
   return msg
 }
 
+const getLastReadMap = () => {
+  try { return wx.getStorageSync(CHAT_LAST_READ_KEY) || {} } catch (e) { return {} }
+}
+
+const markRoomRead = (roomId) => {
+  if (!roomId) return
+  try {
+    const map = getLastReadMap()
+    map[roomId] = new Date().toISOString()
+    wx.setStorageSync(CHAT_LAST_READ_KEY, map)
+  } catch (e) {}
+}
+
+const getUnreadCountForRoom = async (roomId, roomUpdatedAtIso) => {
+  if (!roomId) return 0
+  const map = getLastReadMap()
+  const lastRead = map[roomId]
+  const updatedTs = roomUpdatedAtIso ? new Date(roomUpdatedAtIso).getTime() : 0
+  if (!lastRead) {
+    return updatedTs > 0 ? 1 : 0
+  }
+  const lastReadTs = new Date(lastRead).getTime()
+  if (!updatedTs || updatedTs <= lastReadTs) return 0
+  if (roomId.startsWith('local_')) return 1
+  try {
+    const q = Bmob.Query('ChatMessage')
+    q.equalTo('roomId', '==', roomId)
+    q.order('createdAt')
+    q.limit(99)
+    const list = await q.find()
+    if (!list || !list.length) return 0
+    const count = list.filter((m) => {
+      const mIso = typeof m.createdAt === 'string' ? m.createdAt : (m.createdAt && m.createdAt.iso) || ''
+      return mIso && new Date(mIso).getTime() > lastReadTs
+    }).length
+    return Math.min(count, 99)
+  } catch (e) {
+    return 1
+  }
+}
+
+/** 为关联跑腿子任务创建三方群聊（buyer+seller+未来的rider） */
+const createLinkedErrandRoom = async (errandItemId, tradeItemTitle, memberIds) => {
+  if (!errandItemId) return null
+  try {
+    const q = Bmob.Query('ChatRoom')
+    q.equalTo('itemId', '==', errandItemId)
+    q.limit(1)
+    const list = await q.find()
+    if (list && list.length) return list[0].objectId
+    const validMembers = (memberIds || []).filter(Boolean)
+    const rowNew = Bmob.Query('ChatRoom')
+    rowNew.set('itemId', errandItemId)
+    rowNew.set('title', `配送群聊 · ${(tradeItemTitle || '').slice(0, 20)}`)
+    rowNew.set('memberIds', JSON.stringify(validMembers))
+    rowNew.set('postType', 'errand')
+    rowNew.set('lastMsg', '配送群聊已创建，骑手接单后将加入')
+    const saved = await rowNew.save()
+    return saved.objectId
+  } catch (e) {
+    console.warn('createLinkedErrandRoom 失败', e)
+    return null
+  }
+}
+
 const formatTime = (iso) => {
   if (!iso) return ''
   const d = new Date(iso)
@@ -255,5 +327,8 @@ module.exports = {
   sendMessage,
   formatTime,
   roleLabel,
-  memberIdsForItem
+  memberIdsForItem,
+  markRoomRead,
+  getUnreadCountForRoom,
+  createLinkedErrandRoom
 }

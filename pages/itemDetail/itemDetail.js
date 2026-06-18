@@ -1,6 +1,7 @@
 const Bmob = require('../../utils/bmob.js')
 const auth = require('../../utils/auth.js')
 const chat = require('../../utils/chat.js')
+const notice = require('../../utils/notice.js')
 const publish = require('../../utils/publish.js')
 const cloudImage = require('../../utils/cloudImage.js')
 const util = require('../../utils/util.js')
@@ -60,12 +61,20 @@ Page({
       return
     }
     this.itemId = id
+    this.itemSrc = (options && options.src) || 'item'  // 'errand' → 查 Errand 表
     this.loadDetail(id)
     this.timer = setInterval(() => {
       if (this.data.lockInfo) {
         this.updateCountdown()
       }
     }, 1000)
+  },
+
+  onShow() {
+    // 从编辑页、接单页等返回时刷新商品信息
+    if (this.itemId && this.loadedOnce) {
+      this.loadDetail(this.itemId)
+    }
   },
 
   onUnload() {
@@ -75,7 +84,9 @@ Page({
   async loadDetail(id) {
     try {
       util.showLoading('加载中...')
-      const row = await publish.getItem(id)
+      const row = this.itemSrc === 'errand'
+        ? await publish.getErrand(id)
+        : await publish.getItem(id)
       util.hideLoading()
       if (!row) {
         util.showToast('内容不存在')
@@ -123,10 +134,16 @@ Page({
         sellerCreditTone = sellerCredit.level.tone
       }
 
-      const contactPhone =
+      const rawPhone =
+        row.phone ||
         row.contactPhone ||
         publish.parseContactFromDescription(row.description) ||
         ''
+      // 联系电话只对发布者本人和已确认接单的骑手可见
+      const contactPhone =
+        isOwner || (isRunner && (status === 'IN_TRADING' || status === 'SOLD_OUT'))
+          ? rawPhone
+          : ''
 
       const blockedUsers = publish.parseBlockedUsersFromDescription(row.description)
       const isBlockedFromAccept = blockedUsers.length > 0 && !!currentUserId && blockedUsers.includes(currentUserId)
@@ -234,6 +251,7 @@ Page({
       if (isErrand) {
         wx.setNavigationBarTitle({ title: '跑腿详情' })
       }
+      this.loadedOnce = true
     } catch (e) {
       util.hideLoading()
       console.error(e)
@@ -351,6 +369,7 @@ Page({
         order.set('status', orderData.status)
         order.set('itemTitle', orderData.itemTitle)
         order.set('price', orderData.price)
+        order.set('itemImage', row.coverImage || '')
         savedOrder = await order.save()
         console.log('[onLock] step4 order.save 返回:', JSON.stringify(savedOrder))
       } catch (orderErr) {
@@ -380,6 +399,16 @@ Page({
         })
         return
       }
+
+      // 通知卖家
+      notice.notifyOrderEvent(
+        sellerId,
+        notice.NOTICE_TYPE.ORDER_LOCKED,
+        '有新买家拍下商品',
+        `买家已拍下「${row.title || '商品'}」，请及时确认订单（24小时内）`,
+        savedOrder.objectId,
+        this.itemId
+      ).catch(() => {})
 
       util.hideLoading()
       util.showToast('已拍下，等待卖家确认', 'success')
@@ -569,7 +598,8 @@ Page({
   },
 
   async setItemStatus(status) {
-    const row = await Bmob.Query('Item').get(this.itemId)
+    const table = this.itemSrc === 'errand' ? 'Errand' : 'Item'
+    const row = await Bmob.Query(table).get(this.itemId)
     row.set('status', status)
     await row.save()
   },
@@ -709,7 +739,8 @@ Page({
   onContact() {
     if (this.data.carting || this.data.buying) return
     chat.openChatForItem(this.itemId, {
-      tip: this.data.isErrand ? '完成校园认证后可联系发布者' : '完成校园认证后可联系卖家'
+      tip: this.data.isErrand ? '完成校园认证后可联系发布者' : '完成校园认证后可联系卖家',
+      src: this.itemSrc
     })
   },
 
@@ -733,11 +764,11 @@ Page({
       util.showToast('暂无接单人')
       return
     }
-    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可联系骑手' })
+    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可联系骑手', src: this.itemSrc })
   },
 
   onOpenGroupChat() {
-    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可进入群聊' })
+    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可进入群聊', src: this.itemSrc })
   },
 
   async onViewErrandOrder() {
@@ -826,10 +857,10 @@ Page({
     try {
       util.showLoading('接单中...')
       const u = auth.getUserInfo()
-      const row = await publish.getItem(this.itemId)
+      const row = await publish.getErrand(this.itemId)
       const sellerId = publish.getSellerId(row)
 
-      await publish.bindRunnerToItem(this.itemId, u.objectId)
+      await publish.bindRunnerToErrand(this.itemId, u.objectId)
 
       const order = Bmob.Query('Order')
       order.set('buyerId', sellerId)
@@ -840,11 +871,21 @@ Page({
       order.set('itemTitle', row.title || '跑腿任务')
       order.set('itemImage', row.coverImage || '')
       order.set('price', row.price || 0)
-      await order.save()
+      const savedOrder = await order.save()
+
+      // 通知发布者有骑手接单
+      notice.notifyOrderEvent(
+        sellerId,
+        notice.NOTICE_TYPE.ERRAND_ACCEPTED,
+        '有骑手申请接单',
+        `您的跑腿任务「${row.title || '跑腿任务'}」有骑手接单，请进入订单查看详情`,
+        savedOrder ? savedOrder.objectId : '',
+        this.itemId
+      ).catch(() => {})
 
       util.hideLoading()
       util.showToast('接单成功，请到订单中确认开始任务', 'success')
-      await chat.openChatForItem(this.itemId, { tip: '' })
+      await chat.openChatForItem(this.itemId, { tip: '', src: this.itemSrc })
       this.loadDetail(this.itemId)
     } catch (e) {
       util.hideLoading()
