@@ -9,12 +9,13 @@ Page({
     loggedIn: false,
     loading: true,
     activeTab: 'all',
-    sysGroup: { unread: 0, lastTitle: '', lastContent: '', timeText: '', count: 0 },
+    noticeGroups: [],
     orderGroups: [],
     rooms: [],
     totalUnread: 0,
     noticeUnreadCount: 0,
-    chatUnreadCount: 0
+    chatUnreadCount: 0,
+    markingAllRead: false
   },
 
   onShow() {
@@ -40,7 +41,7 @@ Page({
     const loggedIn = auth.checkLoginStatus()
     this.setData({ loggedIn })
     if (!loggedIn) {
-      this.setData({ loading: false, sysGroup: { unread: 0, count: 0 }, orderGroups: [], rooms: [], totalUnread: 0 })
+      this.setData({ loading: false, noticeGroups: [], orderGroups: [], rooms: [], totalUnread: 0 })
       return
     }
     this.setData({ loading: true })
@@ -51,7 +52,7 @@ Page({
         chat.listRoomsForUser(u.objectId)
       ])
 
-      const { sysGroup, orderGroups } = grouped
+      const { noticeGroups, orderGroups } = grouped
 
       // Add unread counts to rooms
       const rooms = await Promise.all(rawRooms.map(async (r) => {
@@ -68,7 +69,9 @@ Page({
         }
       }))
 
-      const noticeUnreadCount = sysGroup.unread + orderGroups.reduce((s, g) => s + g.unread, 0)
+      const noticeUnreadCount =
+        noticeGroups.reduce((s, g) => s + g.unread, 0) +
+        orderGroups.reduce((s, g) => s + g.unread, 0)
       const chatUnreadCount = rooms.reduce((s, r) => s + r.unread, 0)
       const totalUnread = noticeUnreadCount + chatUnreadCount
 
@@ -77,16 +80,17 @@ Page({
       app.globalData.unreadNoticeCount = totalUnread    // 通知 + 聊天，驱动 tabBar 红点
       app.refreshTabBadge()
 
-      this.setData({ sysGroup, orderGroups, rooms, totalUnread, noticeUnreadCount, chatUnreadCount, loading: false })
+      this.setData({ noticeGroups, orderGroups, rooms, totalUnread, noticeUnreadCount, chatUnreadCount, loading: false })
     } catch (e) {
       console.error(e)
       this.setData({ loading: false })
     }
   },
 
-  onOpenSysNotices() {
+  onOpenNoticeGroup(e) {
+    const category = e.currentTarget.dataset.category || ''
     wx.navigateTo({
-      url: '/pages/notices/notices',
+      url: `/pages/notices/notices?category=${category}`,
       fail: () => util.showToast('暂无法打开')
     })
   },
@@ -109,16 +113,60 @@ Page({
     }
   },
 
-  onMarkAllRead() {
-    notice.markAllRead().then(() => {
-      notice.syncTabBadge()
-      this.loadAll()
+  async onMarkAllRead() {
+    if (this.data.markingAllRead || this.data.totalUnread <= 0) return
+
+    const rooms = this.data.rooms || []
+    const noticeGroups = this.data.noticeGroups || []
+    const orderGroups = this.data.orderGroups || []
+    const app = getApp()
+
+    rooms.forEach((room) => chat.markRoomRead(room.objectId))
+    if (app && app.globalData) {
+      app.globalData.chatUnreadCount = 0
+      app.globalData.unreadNoticeCount = 0
+      if (typeof app.refreshTabBadge === 'function') {
+        app.refreshTabBadge()
+      }
+    }
+
+    this.setData({
+      markingAllRead: true,
+      noticeGroups: noticeGroups.map((group) => ({
+        ...group,
+        unread: 0,
+        notices: (group.notices || []).map((n) => ({ ...n, read: true }))
+      })),
+      orderGroups: orderGroups.map((group) => ({
+        ...group,
+        unread: 0,
+        notices: (group.notices || []).map((n) => ({ ...n, read: true }))
+      })),
+      rooms: rooms.map((room) => ({ ...room, unread: 0 })),
+      totalUnread: 0,
+      noticeUnreadCount: 0,
+      chatUnreadCount: 0
     })
+
+    try {
+      await notice.markAllRead()
+      notice.syncTabBadge()
+      await this.loadAll()
+    } catch (e) {
+      console.error(e)
+      util.showToast('标记已读失败')
+      await this.loadAll()
+    } finally {
+      this.setData({ markingAllRead: false })
+    }
   },
 
   onOpenRoom(e) {
     const { roomId, itemId } = e.currentTarget.dataset
-    if (!auth.guardCampusAction({ tip: '完成校园认证后可查看消息' })) return
+    if (!auth.guardCampusAction({
+      tip: '完成校园认证后可查看消息',
+      allowFrozen: true
+    })) return
     if (roomId && itemId) {
       wx.navigateTo({
         url: `/pages/chatRoom/chatRoom?roomId=${roomId}&itemId=${itemId}`

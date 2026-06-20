@@ -55,6 +55,32 @@ const goBack = () => {
   wx.switchTab({ url: '/pages/index/index' })
 }
 
+const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024
+const MAX_IMAGE_SIZE_LABEL = '20MB'
+
+const assertImageWithinSize = (filePath, knownSize) =>
+  new Promise((resolve, reject) => {
+    if (knownSize != null && knownSize > MAX_IMAGE_SIZE_BYTES) {
+      reject(new Error(`单张图片不能超过 ${MAX_IMAGE_SIZE_LABEL}`))
+      return
+    }
+    if (!filePath) {
+      resolve()
+      return
+    }
+    wx.getFileInfo({
+      filePath,
+      success: (res) => {
+        if (res.size > MAX_IMAGE_SIZE_BYTES) {
+          reject(new Error(`单张图片不能超过 ${MAX_IMAGE_SIZE_LABEL}`))
+          return
+        }
+        resolve()
+      },
+      fail: (err) => reject(err)
+    })
+  })
+
 module.exports = {
   formatTime,
   showToast,
@@ -63,5 +89,8 @@ module.exports = {
   showModal,
   validateEmail,
   validatePhone,
-  goBack
+  goBack,
+  MAX_IMAGE_SIZE_BYTES,
+  MAX_IMAGE_SIZE_LABEL,
+  assertImageWithinSize
 }

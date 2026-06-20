@@ -120,7 +120,7 @@ function onRequest(request, response, modules) {
           if (!userRet || !userRet.results || !userRet.results.length) return cb()
           var user = userRet.results[0]
           var beforeScore = normalizeScore(user.creditScore)
-          var afterScore = Math.max(0, beforeScore + Number(delta || 0))
+          var afterScore = normalizeScore(beforeScore + Number(delta || 0))
           var actualDelta = afterScore - beforeScore
           var userData = { creditScore: afterScore }
           if ((user.status || 'active') === 'active' && afterScore < 40) {
@@ -261,7 +261,7 @@ function onRequest(request, response, modules) {
 
 function normalizeScore(value) {
   var n = Number(value)
-  return isFinite(n) ? Math.max(0, n) : 100
+  return isFinite(n) ? Math.min(100, Math.max(0, n)) : 100
 }
 
 function dateNow() {

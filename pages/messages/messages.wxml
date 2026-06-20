@@ -28,22 +28,25 @@
       <view wx:if="{{activeTab === 'all' || activeTab === 'notice'}}" class="section">
         <view wx:if="{{activeTab === 'all'}}" class="section-head">通知</view>
 
-        <!-- 系统管理员通知（合并为一个框） -->
+        <!-- 后台通知分类：信用分变更 / 商品下架 / 纠纷 -->
         <view
-          class="msg-row card-flat flex-row {{sysGroup.unread > 0 ? 'unread' : ''}}"
+          wx:for="{{noticeGroups}}"
+          wx:key="category"
+          class="msg-row card-flat flex-row {{item.unread > 0 ? 'unread' : ''}}"
           hover-class="msg-row-hover"
-          bindtap="onOpenSysNotices"
+          data-category="{{item.category}}"
+          bindtap="onOpenNoticeGroup"
         >
-          <view class="row-avatar sys-avatar flex-center">!</view>
+          <view class="row-avatar {{item.avatarClass}} flex-center">{{item.avatarText}}</view>
           <view class="row-body flex-col">
             <view class="flex-row flex-between">
-              <text class="row-title">系统通知</text>
-              <text class="row-time">{{sysGroup.timeText}}</text>
+              <text class="row-title">{{item.title}}</text>
+              <text class="row-time">{{item.timeText}}</text>
             </view>
-            <text class="row-preview">{{sysGroup.lastTitle || (sysGroup.count > 0 ? sysGroup.lastContent : '暂无系统通知')}}</text>
-            <text class="row-tag">举报 · 申诉 · 信用 · 系统消息</text>
+            <text class="row-preview">{{item.lastTitle || item.lastContent}}</text>
+            <text class="row-tag">{{item.tagText}}</text>
           </view>
-          <view wx:if="{{sysGroup.unread > 0}}" class="badge">{{sysGroup.unread > 99 ? '99+' : sysGroup.unread}}</view>
+          <view wx:if="{{item.unread > 0}}" class="badge">{{item.unread > 99 ? '99+' : item.unread}}</view>
         </view>
 
         <!-- 订单状态通知（每个订单一个框） -->
@@ -68,7 +71,7 @@
           <view wx:if="{{item.unread > 0}}" class="badge">{{item.unread > 99 ? '99+' : item.unread}}</view>
         </view>
 
-        <view wx:if="{{sysGroup.count === 0 && !orderGroups.length}}" class="section-empty text-muted">暂无通知</view>
+        <view wx:if="{{!noticeGroups.length && !orderGroups.length}}" class="section-empty text-muted">暂无通知</view>
       </view>
 
       <!-- 聊天区 -->
@@ -97,7 +100,7 @@
         </view>
       </view>
 
-      <view wx:if="{{activeTab === 'all' && sysGroup.count === 0 && !orderGroups.length && !rooms.length}}" class="empty-state flex-col flex-center">
+      <view wx:if="{{activeTab === 'all' && !noticeGroups.length && !orderGroups.length && !rooms.length}}" class="empty-state flex-col flex-center">
         <text class="empty-illus">📭</text>
         <text class="empty-title">暂无消息</text>
         <text class="text-muted text-center">订单通知与聊天会话将显示在这里</text>

@@ -1,5 +1,4 @@
 <view class="detail-page page-safe-bottom" wx:if="{{!loading && item}}">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <swiper class="gallery" indicator-dots circular>
     <swiper-item wx:for="{{images}}" wx:key="*this">
       <image class="gallery-img" src="{{item}}" mode="aspectFill" binderror="onGalleryImageError" data-index="{{index}}" />

@@ -1,6 +1,4 @@
 <view class="review-page page-safe-bottom">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
-
   <view wx:if="{{loading}}" class="state text-muted text-center">加载中...</view>
 
   <view wx:if="{{!loading && order}}" class="review-panel">

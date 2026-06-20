@@ -218,7 +218,15 @@ Page({
           fail: reject
         })
       })
-      const paths = (res.tempFiles || []).map((f) => f.tempFilePath)
+      const files = res.tempFiles || []
+      const oversize = files.find(
+        (f) => f.size != null && f.size > util.MAX_IMAGE_SIZE_BYTES
+      )
+      if (oversize) {
+        util.showToast(`单张图片不能超过 ${util.MAX_IMAGE_SIZE_LABEL}`)
+        return
+      }
+      const paths = files.map((f) => f.tempFilePath)
       if (!paths.length) return
       util.showLoading('上传中...')
       const uploaded = await cloudStorage.uploadImages(paths, remain, 'ticket')

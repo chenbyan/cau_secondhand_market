@@ -1,5 +1,4 @@
 <view class="verify-page">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <block wx:if="{{verified}}">
     <view class="hero flex-col flex-center">
       <text class="hero-icon">✅</text>

@@ -8,7 +8,99 @@ const credit = require('../../../utils/credit.js')
 
 const TYPE_LABEL = {
   goods: '物品',
-  errand: '跑腿'
+  errand: '跑腿',
+  linked_errand: '关联跑腿'
+}
+
+function parseErrandMeta(raw) {
+  if (!raw) return {}
+  if (typeof raw === 'object') return raw
+  try {
+    return JSON.parse(raw)
+  } catch (e) {
+    return {}
+  }
+}
+
+function getPointerId(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  return value.objectId || value.id || ''
+}
+
+/** 合并独立跑腿、历史 Item 表跑腿、商品关联跑腿 */
+async function fetchMyErrandRows(userId, statusTab) {
+  const rows = []
+  const seen = new Set()
+
+  const pushRow = (row, extra) => {
+    if (!row || !row.objectId || seen.has(row.objectId)) return
+    seen.add(row.objectId)
+    rows.push(Object.assign({}, row, extra || {}))
+  }
+
+  const qErrand = Bmob.Query('Errand')
+  qErrand.equalTo('sellerId', '==', userId)
+  if (statusTab !== 'all') qErrand.equalTo('status', '==', statusTab)
+  qErrand.order('-createdAt')
+  qErrand.limit(100)
+  const errandRows = (await qErrand.find()) || []
+  errandRows.forEach((row) => {
+    const source = row.linkedOrderId ? 'linked' : 'standalone'
+    pushRow(row, { errandSource: source })
+  })
+
+  try {
+    const qLegacy = Bmob.Query('Item')
+    qLegacy.equalTo('sellerId', '==', userId)
+    qLegacy.equalTo('postType', '==', publish.POST_TYPE.ERRAND)
+    if (statusTab !== 'all') qLegacy.equalTo('status', '==', statusTab)
+    qLegacy.order('-createdAt')
+    qLegacy.limit(50)
+    const legacyRows = (await qLegacy.find()) || []
+    legacyRows.forEach((row) => pushRow(row, { errandSource: 'legacy', fromLegacyItem: true }))
+  } catch (e) {
+    console.warn('读取历史 Item 跑腿失败', e)
+  }
+
+  try {
+    const buyQ = Bmob.Query('Order')
+    buyQ.equalTo('buyerId', '==', userId)
+    buyQ.limit(50)
+    const sellQ = Bmob.Query('Order')
+    sellQ.equalTo('sellerId', '==', userId)
+    sellQ.limit(50)
+    const [buyOrders, sellOrders] = await Promise.all([buyQ.find(), sellQ.find()])
+    const linkedIds = []
+    ;[...(buyOrders || []), ...(sellOrders || [])].forEach((order) => {
+      if ((order.postType || '') === 'errand') return
+      const meta = parseErrandMeta(order.errandMeta)
+      if (meta.errandItemId) {
+        linkedIds.push({ errandId: meta.errandItemId, linkedOrderId: order.objectId })
+      }
+    })
+    for (let i = 0; i < linkedIds.length; i++) {
+      const link = linkedIds[i]
+      try {
+        const row = await Bmob.Query('Errand').get(link.errandId)
+        if (statusTab !== 'all' && row.status !== statusTab) continue
+        const sellerId = getPointerId(row.sellerId)
+        const source = sellerId === userId ? 'linked' : 'linked_trade'
+        pushRow(row, { errandSource: source, linkedOrderId: link.linkedOrderId })
+      } catch (e) {
+        console.warn('读取关联跑腿失败', link.errandId, e)
+      }
+    }
+  } catch (e) {
+    console.warn('读取交易关联跑腿失败', e)
+  }
+
+  rows.sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
+    return tb - ta
+  })
+  return rows
 }
 
 Page({
@@ -51,6 +143,7 @@ Page({
 
   onPublishTab(e) {
     const key = e.currentTarget.dataset.key
+    this._allErrandRows = null
     this.setData({
       activePublishTab: key,
       statusChips: itemStatus.getStatusChips(key),
@@ -64,11 +157,13 @@ Page({
 
   onStatusChip(e) {
     const key = e.currentTarget.dataset.key
+    this._allErrandRows = null
     this.setData({ activeStatus: key, page: 0, items: [], hasMore: true })
     this.loadItems(true)
   },
 
   async onRefresh() {
+    this._allErrandRows = null
     this.setData({ refreshing: true, page: 0, hasMore: true })
     await this.loadItems(true)
     this.setData({ refreshing: false })
@@ -87,9 +182,26 @@ Page({
     else this.setData({ loadingMore: true })
     try {
       const publishTab = this.data.activePublishTab
-      const q = Bmob.Query(publishTab === 'errand' ? 'Errand' : 'Item')
-      q.equalTo('sellerId', '==', u.objectId)
       const statusTab = this.data.activeStatus
+
+      if (publishTab === 'errand') {
+        if (reset || !this._allErrandRows) {
+          this._allErrandRows = await fetchMyErrandRows(u.objectId, statusTab)
+        }
+        const start = page * 10
+        const slice = (this._allErrandRows || []).slice(start, start + 10)
+        const items = await this.mapRowsToItems(slice, publishTab)
+        const merged = reset ? items : this.data.items.concat(items)
+        this.setData({
+          items: merged,
+          page: page + 1,
+          hasMore: start + 10 < (this._allErrandRows || []).length
+        })
+        return
+      }
+
+      const q = Bmob.Query('Item')
+      q.equalTo('sellerId', '==', u.objectId)
       if (statusTab !== 'all') {
         q.equalTo('status', '==', statusTab)
       }
@@ -97,46 +209,10 @@ Page({
       q.limit(10)
       q.skip(page * 10)
       let list = (await q.find()).filter((r) => r.status !== 'DELETED_SOFT')
-      if (publishTab === 'goods') {
-        list = (list || []).filter(
-          (r) => !r.postType || r.postType === publish.POST_TYPE.GOODS
-        )
-      }
-      // errand 标签页直接查 Errand 表，无需再过滤 postType
-      const items = []
-      for (let i = 0; i < (list || []).length; i++) {
-        const row = list[i]
-        const postType = publishTab === 'errand'
-          ? publish.POST_TYPE.ERRAND
-          : (row.postType || publish.POST_TYPE.GOODS)
-        const isErrand = postType === publish.POST_TYPE.ERRAND
-        let coverImage = row.coverImage || ''
-        if (cloudImage.isCloudFileId(coverImage)) {
-          coverImage = await cloudImage.resolveImageUrl(coverImage)
-        }
-        const status = row.status || 'ON_SALE'
-        const meta = itemStatus.getStatusMeta(postType, status)
-        const needsRectify = !!row.rectifyRequired && status === 'OFFLINE'
-        let routeHint = ''
-        if (isErrand && row.pickupAddr && row.deliveryAddr) {
-          routeHint = `${row.pickupAddr} → ${row.deliveryAddr}`
-        }
-        items.push({
-          ...row,
-          coverImage,
-          postType,
-          typeLabel: TYPE_LABEL[postType] || '物品',
-          isErrand,
-          priceLabel: isErrand ? '赏金' : '价格',
-          statusLabel: needsRectify ? '已取消 · 待整改' : meta.label,
-          statusClass: meta.cls,
-          rectifyRequired: needsRectify,
-          rectifyReason: row.rectifyReason || '',
-          routeHint,
-          canEdit: isErrand ? status === 'ON_SALE' : status === 'ON_SALE',
-          createdAtText: row.createdAt ? util.formatTime(row.createdAt) : ''
-        })
-      }
+      list = (list || []).filter(
+        (r) => !r.postType || r.postType === publish.POST_TYPE.GOODS
+      )
+      const items = await this.mapRowsToItems(list, publishTab)
       const merged = reset ? items : this.data.items.concat(items)
       this.setData({
         items: merged,
@@ -151,12 +227,61 @@ Page({
     }
   },
 
+  async mapRowsToItems(list, publishTab) {
+    const items = []
+    for (let i = 0; i < (list || []).length; i++) {
+      const row = list[i]
+      const postType = publishTab === 'errand'
+        ? publish.POST_TYPE.ERRAND
+        : (row.postType || publish.POST_TYPE.GOODS)
+      const isErrand = postType === publish.POST_TYPE.ERRAND
+      let coverImage = row.coverImage || ''
+      if (cloudImage.isCloudFileId(coverImage)) {
+        coverImage = await cloudImage.resolveImageUrl(coverImage)
+      }
+      const status = row.status || 'ON_SALE'
+      const meta = itemStatus.getStatusMeta(postType, status)
+      const needsRectify = !!row.rectifyRequired && status === 'OFFLINE'
+      let routeHint = ''
+      if (isErrand && row.pickupAddr && row.deliveryAddr) {
+        routeHint = `${row.pickupAddr} → ${row.deliveryAddr}`
+      } else if (row.linkedOrderId) {
+        routeHint = '来自交易订单的关联跑腿'
+      }
+      let typeLabel = TYPE_LABEL[postType] || '物品'
+      if (row.errandSource === 'linked' || row.errandSource === 'linked_trade') {
+        typeLabel = TYPE_LABEL.linked_errand
+      } else if (row.errandSource === 'legacy') {
+        typeLabel = '跑腿(历史)'
+      }
+      items.push({
+        ...row,
+        coverImage,
+        postType,
+        typeLabel,
+        isErrand,
+        fromLegacyItem: !!row.fromLegacyItem,
+        priceLabel: isErrand ? '赏金' : '价格',
+        statusLabel: needsRectify ? '已取消 · 待整改' : meta.label,
+        statusClass: meta.cls,
+        rectifyRequired: needsRectify,
+        rectifyReason: row.rectifyReason || '',
+        routeHint,
+        canEdit: isErrand ? status === 'ON_SALE' : status === 'ON_SALE',
+        createdAtText: row.createdAt ? util.formatTime(row.createdAt) : ''
+      })
+    }
+    return items
+  },
+
   onOpenDetail(e) {
     const id = e.currentTarget.dataset.id
+    const item = (this.data.items || []).find((row) => row.objectId === id) || {}
     const isErrand = this.data.activePublishTab === 'errand'
-    const url = isErrand
-      ? `/pages/itemDetail/itemDetail?id=${id}&src=errand`
-      : `/pages/itemDetail/itemDetail?id=${id}`
+    let url = `/pages/itemDetail/itemDetail?id=${id}`
+    if (isErrand && !item.fromLegacyItem) {
+      url += '&src=errand'
+    }
     wx.navigateTo({ url })
   },
 
@@ -170,6 +295,10 @@ Page({
       return
     }
     const postType = item.postType || publish.POST_TYPE.GOODS
+    if (item.fromLegacyItem) {
+      wx.navigateTo({ url: `/pages/itemPublish/itemPublish?id=${item.objectId}` })
+      return
+    }
     const url =
       postType === publish.POST_TYPE.ERRAND
         ? `/pages/errandPublish/errandPublish?id=${item.objectId}`
@@ -178,8 +307,11 @@ Page({
   },
 
   async setItemStatus(id, status, extra = {}) {
-    const isErrand = this.data.activePublishTab === 'errand'
-    const row = await Bmob.Query(isErrand ? 'Errand' : 'Item').get(id)
+    const item = (this.data.items || []).find((x) => x.objectId === id) || {}
+    const table = item.fromLegacyItem
+      ? 'Item'
+      : (this.data.activePublishTab === 'errand' ? 'Errand' : 'Item')
+    const row = await Bmob.Query(table).get(id)
     row.set('status', status)
     Object.keys(extra).forEach((key) => row.set(key, extra[key]))
     await row.save()

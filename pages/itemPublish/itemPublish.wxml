@@ -1,5 +1,4 @@
 <view class="publish-page page-safe-bottom">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <scroll-view scroll-y class="form-scroll">
     <view class="section card-flat">
       <text class="section-title">商品信息</text>

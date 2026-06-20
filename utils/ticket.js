@@ -271,8 +271,11 @@ async function submitDispute(orderId, reason, evidence) {
     if (u.objectId !== buyerId && u.objectId !== sellerId) {
       return { success: false, message: '仅买卖双方可发起申诉' }
     }
+    const isErrandOrder = order.postType === 'errand'
     if (TERMINAL_ORDER.indexOf(order.status) >= 0) {
-      return { success: false, message: '订单已结束，无法申诉' }
+      if (!isErrandOrder || order.status !== 'COMPLETED') {
+        return { success: false, message: '订单已结束，无法申诉' }
+      }
     }
     if (order.frozen) {
       return { success: false, message: '该订单已有进行中的申诉' }
@@ -823,12 +826,15 @@ async function decideCase(options = {}) {
     await orderRow.save()
     if (order.itemId && orderOutcome) {
       try {
-        const itemRow = await Bmob.Query('Item').get(order.itemId)
+        const itemTable = order.postType === 'errand' ? 'Errand' : 'Item'
+        const itemRow = await Bmob.Query(itemTable).get(order.itemId)
         if (orderOutcome === 'COMPLETED') itemRow.set('status', 'SOLD_OUT')
-        if (orderOutcome === 'CANCELLED') itemRow.set('status', 'ON_SALE')
+        if (orderOutcome === 'CANCELLED') {
+          itemRow.set('status', order.postType === 'errand' ? 'OFFLINE' : 'ON_SALE')
+        }
         await itemRow.save()
       } catch (e) {
-        console.warn('裁决同步商品状态失败', e)
+        console.warn('裁决同步任务/商品状态失败', e)
       }
     }
     if (orderOutcome === 'COMPLETED') {

@@ -1,5 +1,4 @@
 <view class="setting-page">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <view class="card form-card">
     <view class="field flex-row" bindtap="onChooseAvatar">
       <text class="label">头像</text>

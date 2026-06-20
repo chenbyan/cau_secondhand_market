@@ -8,6 +8,7 @@ const notice = require('./notice.js')
 
 const DEFAULT_SCORE = 100
 const MIN_SCORE = 0
+const MAX_SCORE = 100
 
 const SOURCE = {
   ORDER_COMPLETE: 'order_complete',
@@ -35,7 +36,7 @@ function toNumber(value, fallback) {
 }
 
 function normalizeScore(value) {
-  return Math.max(MIN_SCORE, toNumber(value, DEFAULT_SCORE))
+  return Math.min(MAX_SCORE, Math.max(MIN_SCORE, toNumber(value, DEFAULT_SCORE)))
 }
 
 function getLevel(score) {
@@ -135,7 +136,7 @@ async function applyDelta(userId, delta, options = {}) {
 
   const userRow = await Bmob.User.get(userId)
   const beforeScore = normalizeScore(userRow.creditScore)
-  const afterScore = Math.max(MIN_SCORE, beforeScore + numericDelta)
+  const afterScore = normalizeScore(beforeScore + numericDelta)
   const actualDelta = afterScore - beforeScore
 
   userRow.set('creditScore', afterScore)
