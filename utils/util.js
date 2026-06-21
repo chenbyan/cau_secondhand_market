@@ -39,9 +39,9 @@ const showModal = (title, content) =>
 
 const validateEmail = (email) => {
   if (!email || typeof email !== 'string') return false
+  const normalized = email.trim().toLowerCase()
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!re.test(email)) return false
-  return email.toLowerCase().endsWith('.edu.cn')
+  return re.test(normalized) && normalized.endsWith('@cau.edu.cn')
 }
 
 const validatePhone = (phone) => /^1\d{10}$/.test(phone || '')

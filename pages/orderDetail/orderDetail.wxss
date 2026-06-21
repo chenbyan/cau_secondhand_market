@@ -344,3 +344,31 @@
   border-color: #2d5a8e;
   color: #2d5a8e;
 }
+
+.seller-pending-card {
+  margin: 0 24rpx 16rpx;
+}
+
+.seller-pending-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 12rpx;
+}
+
+.seller-pending-item {
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  border-top: 1rpx solid #eef1f5;
+}
+
+.seller-pending-name {
+  font-size: 28rpx;
+  color: #2c3e50;
+}
+
+.seller-pending-time {
+  font-size: 22rpx;
+  margin-top: 4rpx;
+}

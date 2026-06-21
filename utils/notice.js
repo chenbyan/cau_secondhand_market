@@ -115,11 +115,54 @@ function getNoticeCategory(type) {
   return ''
 }
 
+function extractQuotedName(text) {
+  const m = String(text || '').match(/「([^」]+)」/)
+  return m ? m[1].trim() : ''
+}
+
+function extractSubjectName(row) {
+  if (!row) return ''
+  const fromContent = extractQuotedName(row.content)
+  if (fromContent) return fromContent
+  const fromTitle = extractQuotedName(row.title)
+  if (fromTitle) return fromTitle
+  return ''
+}
+
 function normalizeNoticeTitle(row) {
   if (!row) return ''
   if (row.type === NOTICE_TYPE.ITEM_OFFLINE) return '商品违规，请整改后再上架'
   if (row.title === '商品已下架，请整改后再上架') return '商品违规，请整改后再上架'
   return row.title || ''
+}
+
+function buildNoticeDisplayTitle(row) {
+  if (!row) return ''
+  const type = row.type || ''
+  const subject = extractSubjectName(row) || (row.itemTitle || '')
+  const base = normalizeNoticeTitle(row) || TYPE_LABEL[type] || '通知'
+
+  if (type === NOTICE_TYPE.REPORT_RECEIVED) {
+    return subject ? `收到举报 · ${subject}` : '收到新的内容举报'
+  }
+  if (type === NOTICE_TYPE.DISPUTE_RECEIVED) {
+    return subject ? `订单申诉 · ${subject}` : '订单收到申诉'
+  }
+  if (type === NOTICE_TYPE.ITEM_OFFLINE) {
+    return subject ? `商品下架整改 · ${subject}` : '商品违规，请整改后再上架'
+  }
+  if (type === NOTICE_TYPE.CASE_CLOSED) {
+    return subject ? `处理结果 · ${subject}` : base
+  }
+  if (type === NOTICE_TYPE.REPORT_REPLY || type === NOTICE_TYPE.DISPUTE_UPDATE) {
+    return subject ? `${base} · ${subject}` : base
+  }
+  if (ORDER_TYPES.indexOf(type) >= 0) {
+    const orderHint = row.disputeId ? `订单 ${String(row.disputeId).slice(-8)}` : ''
+    if (subject) return `${base} · ${subject}`
+    if (orderHint) return `${base} · ${orderHint}`
+  }
+  return base
 }
 
 async function createNotice(payload) {
@@ -154,7 +197,7 @@ async function notifyReportReceived(respondentId, caseKey, caseTitle, reporterId
   await createNotice({
     userId: respondentId,
     type: NOTICE_TYPE.REPORT_RECEIVED,
-    title: '收到新的内容举报',
+    title: caseTitle ? `收到举报 · ${caseTitle}` : '收到新的内容举报',
     content: `「${caseTitle || '您的发布'}」被举报，请尽快查看并回应。`,
     caseKey
   })
@@ -166,7 +209,7 @@ async function notifyDisputeReceived(respondentId, caseKey, caseTitle, orderId) 
   await createNotice({
     userId: respondentId,
     type: NOTICE_TYPE.DISPUTE_RECEIVED,
-    title: '订单收到申诉',
+    title: caseTitle ? `订单申诉 · ${caseTitle}` : '订单收到申诉',
     content: `订单相关商品「${caseTitle || orderId}」被对方发起申诉，订单已冻结。`,
     caseKey,
     disputeId: orderId
@@ -181,12 +224,13 @@ async function notifyCaseReply(caseKey, caseTitle, authorId, authorRole, notifyU
       : authorRole === 'reporter'
         ? '举报方补充说明'
         : '参与方补充说明'
+  const displayTitle = caseTitle ? `${roleText} · ${caseTitle}` : roleText
   const ids = (notifyUserIds || []).filter((id) => id && id !== authorId)
   for (let i = 0; i < ids.length; i++) {
     await createNotice({
       userId: ids[i],
       type: NOTICE_TYPE.REPORT_REPLY,
-      title: roleText,
+      title: displayTitle,
       content: `案卷「${caseTitle || caseKey}」有新动态，点击查看。`,
       caseKey
     })
@@ -196,11 +240,14 @@ async function notifyCaseReply(caseKey, caseTitle, authorId, authorRole, notifyU
 /** 撤销 / 管理员结案等 */
 async function notifyCaseUpdate(userIds, caseKey, caseTitle, title, content, type) {
   const ids = [...new Set((userIds || []).filter(Boolean))]
+  const subject = (caseTitle || '').trim()
+  const displayTitle =
+    subject && title && title.indexOf(subject) < 0 ? `${title} · ${subject}` : (title || subject)
   for (let i = 0; i < ids.length; i++) {
     await createNotice({
       userId: ids[i],
       type: type || NOTICE_TYPE.DISPUTE_UPDATE,
-      title,
+      title: displayTitle,
       content: content || caseTitle,
       caseKey
     })
@@ -214,6 +261,44 @@ function formatNoticeTime(raw) {
   return ''
 }
 
+async function resolveNoticeSubject(row, cache) {
+  const fromText = extractSubjectName(row)
+  if (fromText) return fromText
+  const type = row.type || ''
+  const itemCache = (cache && cache.item) || {}
+  const disputeCache = (cache && cache.dispute) || {}
+  if (type === NOTICE_TYPE.ITEM_OFFLINE && row.disputeId) {
+    if (itemCache[row.disputeId]) return itemCache[row.disputeId]
+    try {
+      const item = await Bmob.Query('Item').get(row.disputeId)
+      const title = item.title || ''
+      itemCache[row.disputeId] = title
+      return title
+    } catch (e) {}
+  }
+  const caseKey = row.caseKey || ''
+  if (caseKey.indexOf('ITEM:') === 0) {
+    const itemId = caseKey.slice(5)
+    if (itemCache[itemId]) return itemCache[itemId]
+    try {
+      const item = await Bmob.Query('Item').get(itemId)
+      const title = item.title || ''
+      itemCache[itemId] = title
+      return title
+    } catch (e) {}
+  }
+  if (row.disputeId && (type === NOTICE_TYPE.CASE_CLOSED || type === NOTICE_TYPE.DISPUTE_UPDATE)) {
+    if (disputeCache[row.disputeId]) return disputeCache[row.disputeId]
+    try {
+      const dispute = await Bmob.Query('Dispute').get(row.disputeId)
+      const title = dispute.caseTitle || ''
+      disputeCache[row.disputeId] = title
+      return title
+    } catch (e) {}
+  }
+  return ''
+}
+
 async function listNotices(limit = 50) {
   const u = auth.getUserInfo()
   if (!u || !u.objectId) return []
@@ -223,20 +308,34 @@ async function listNotices(limit = 50) {
     q.order('-createdAt')
     q.limit(limit)
     const list = await q.find()
-    return (list || [])
+    const filtered = (list || [])
       .filter((row) => row.type !== 'init' && row.userId !== '_init')
-      .map((row) => ({
-      objectId: row.objectId,
-      type: row.type || '',
-      typeLabel: TYPE_LABEL[row.type] || '通知',
-      title: normalizeNoticeTitle(row),
-      content: row.content || '',
-      caseKey: row.caseKey || '',
-      disputeId: row.disputeId || '',
-      read: !!row.read,
-      timeText: formatNoticeTime(row.createdAt),
-      createdAt: row.createdAt
-    }))
+    const mapped = []
+    const entityCache = { item: {}, dispute: {} }
+    for (let i = 0; i < filtered.length; i++) {
+      const row = filtered[i]
+      const itemTitle = await resolveNoticeSubject(row, entityCache)
+      const displayRow = {
+        type: row.type || '',
+        title: row.title || '',
+        content: row.content || '',
+        disputeId: row.disputeId || '',
+        itemTitle
+      }
+      mapped.push({
+        objectId: row.objectId,
+        type: row.type || '',
+        typeLabel: TYPE_LABEL[row.type] || '通知',
+        title: buildNoticeDisplayTitle(displayRow),
+        content: row.content || '',
+        caseKey: row.caseKey || '',
+        disputeId: row.disputeId || '',
+        read: !!row.read,
+        timeText: formatNoticeTime(row.createdAt),
+        createdAt: row.createdAt
+      })
+    }
+    return mapped
   } catch (e) {
     if (/object not found.*UserNotice/i.test(String(e.error || e.message || ''))) {
       return []
@@ -246,8 +345,22 @@ async function listNotices(limit = 50) {
 }
 
 async function countUnread() {
-  const list = await listNotices(100)
-  return list.filter((n) => !n.read).length
+  const u = auth.getUserInfo()
+  if (!u || !u.objectId) return 0
+  try {
+    const q = Bmob.Query('UserNotice')
+    q.equalTo('userId', '==', u.objectId)
+    q.equalTo('read', '==', false)
+    q.limit(200)
+    const list = await q.find()
+    return (list || []).filter((row) => row.type !== 'init' && row.userId !== '_init').length
+  } catch (e) {
+    if (/object not found.*UserNotice/i.test(String(e.error || e.message || ''))) {
+      return 0
+    }
+    console.warn('countUnread', e)
+    return 0
+  }
 }
 
 async function markRead(noticeId) {
@@ -271,9 +384,15 @@ async function markAllRead() {
   }
 }
 
+let lastBadgeSyncAt = 0
+const BADGE_SYNC_MIN_MS = 30000
+
 function syncTabBadge() {
   const app = getApp()
   if (!app) return
+  const now = Date.now()
+  if (now - lastBadgeSyncAt < BADGE_SYNC_MIN_MS) return
+  lastBadgeSyncAt = now
   countUnread()
     .then((n) => {
       const chatUnread = (app.globalData && app.globalData.chatUnreadCount) || 0

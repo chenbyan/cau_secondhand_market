@@ -30,7 +30,7 @@
       </view>
       <view class="field flex-col">
         <text class="label">校园邮箱</text>
-        <input class="input" placeholder="name@xxx.edu.cn" value="{{email}}" bindinput="onEmail" />
+        <input class="input" placeholder="name@cau.edu.cn" value="{{email}}" bindinput="onEmail" />
       </view>
       <view class="field flex-row code-row">
         <input class="input code-input" placeholder="6 位验证码" maxlength="6" value="{{code}}" bindinput="onCode" />
@@ -51,7 +51,7 @@
     <view class="hero flex-col flex-center">
       <text class="hero-icon">🎓</text>
       <text class="hero-title">校园邮箱认证</text>
-      <text class="text-muted text-center sub">请使用 .edu.cn 后缀的学校邮箱，提交后由管理员审核</text>
+      <text class="text-muted text-center sub">请使用 @cau.edu.cn 后缀的中国农业大学邮箱，提交后由管理员审核</text>
     </view>
     <view class="card form-card">
       <view class="field flex-col">
@@ -62,7 +62,7 @@
       </view>
       <view class="field flex-col">
         <text class="label">校园邮箱</text>
-        <input class="input" placeholder="name@xxx.edu.cn" value="{{email}}" bindinput="onEmail" />
+        <input class="input" placeholder="name@cau.edu.cn" value="{{email}}" bindinput="onEmail" />
       </view>
       <view class="field flex-row code-row">
         <input class="input code-input" placeholder="6 位验证码" maxlength="6" value="{{code}}" bindinput="onCode" />

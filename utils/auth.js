@@ -320,7 +320,7 @@ const dateFromNowMinutes = (mins) => ({
 const sendVerifyCode = async (email) => {
   email = String(email || '').trim().toLowerCase()
   if (!util.validateEmail(email)) {
-    return { success: false, message: '请输入有效的 .edu.cn 校园邮箱' }
+    return { success: false, message: '请输入有效的 @cau.edu.cn 校园邮箱' }
   }
   const current = await refreshCurrentUserInfo()
   if (current && current.campusVerified) {

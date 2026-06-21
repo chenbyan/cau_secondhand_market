@@ -8,20 +8,29 @@
 
 **背景：** Item 表列数达到 Bmob 上限（20列），跑腿任务已迁移至独立 `Errand` 表。
 
+**Item 表列已满时的约定：**
+- **物品**不再使用 `rectifyRequired` / `offlineReason` 等字段（避免自动建列报错 1004）
+- 举报「下架整改」只写 `Item.status = OFFLINE`，整改状态由 **Dispute** 表 `reportOutcome=OFFLINE_RECTIFY` 判断
+- **跑腿**整改仍用 Errand 表的 `rectifyRequired` 字段
+
+**建议在 Bmob 控制台删除 Item 表中已迁移到 Errand 的冗余列（释放额度）：**
+`errandCategory` · `runnerNickName` · `runnerId` · `runnerPhone` · `deadline` · `deliveryAddr` · `pickupAddr`  
+（删除前确认无重要历史 Item 跑腿数据，或已迁移完毕）
+
 | 文件 | 改动内容 |
 |------|---------|
 | `utils/publish.js` | 新增 `saveErrand`、`getErrand`、`bindRunnerToErrand`、`fetchErrands`；`fetchItems` 过滤掉旧 Item 表中 `postType=errand` 的遗留数据 |
 | `pages/errandPublish/errandPublish.js` | 读写全部切换至 Errand 表；联系电话不再嵌入 description，直接存 `phone` 字段（对应 Errand 表新增的 `phone` 列） |
 | `pages/itemDetail/itemDetail.js` | 通过 URL 参数 `src=errand` 路由至 Errand 表；联系电话从 `row.phone` 读取，**只对发布者本人和已确认接单的骑手可见** |
 | `pages/publishHub/publishHub.js` | 跑腿标签页调用 `fetchErrands`，详情跳转附加 `src=errand` |
-| `pages/my/myItems/myItems.js` | 跑腿标签页查 Errand 表；移除已废弃的 `row.offlineReason` 回退；`onOnline` 不再向 Errand 记录写 `offlineReason`/`offlineSource` |
+| `pages/my/myItems/myItems.js` | 跑腿标签页查 Errand 表；物品待整改通过 `utils/itemRectify.js` 查 Dispute 表 |
 | `pages/my/myOrders/myOrders.js` | 使用 `cloudImage.resolveOrderItemImage` 解析订单封面图 |
 | `pages/orderDetail/orderDetail.js` | 所有跑腿相关查询切换至 Errand 表；`onCodeModalConfirm` 收件码验证后正确更新 Errand 表状态（原来错误地更新 Item 表） |
 
 **Errand 表当前字段（18列）：**
-`sellerId` · `status` · `postType` · `title` · `description` · `price` · `category` · `errandCategory` · `coverImage` · `images` · `campus` · `pickupAddr` · `deliveryAddr` · `deadline` · `runnerId` · `lockBuyerId` · `rectifyRequired` · `phone`
+`sellerId` · `status` · `postType` · `title` · `description` · `price` · `category` · `coverImage` · `images` · `campus` · `lockBuyerId` · `lockBuyers` · `lockExpireAt`
 
-> `offlineReason` 字段已删除，替换为 `phone`（发布者联系电话）。
+> 跑腿专用列（`pickupAddr` 等）建议从 Item 表删除；整改状态查 Dispute 表，不在 Item 表新增列。
 
 ---
 

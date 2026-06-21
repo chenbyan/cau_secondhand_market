@@ -309,4 +309,41 @@
   margin-bottom: 4rpx;
 }
 
+.seller-lock-panel {
+  margin: 16rpx 24rpx 0;
+  padding: 20rpx;
+}
+
+.seller-lock-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 8rpx;
+}
+
+.seller-lock-hint {
+  display: block;
+  font-size: 24rpx;
+  color: #856404;
+  margin-bottom: 16rpx;
+}
+
+.seller-lock-item {
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 0;
+  border-top: 1rpx solid #eef1f5;
+}
+
+.seller-lock-name {
+  font-size: 28rpx;
+  color: #2c3e50;
+}
+
+.seller-lock-time {
+  font-size: 22rpx;
+  margin-top: 4rpx;
+}
+
 .action-bar-tip { font-size: 24rpx; color: #888; flex: 1; }

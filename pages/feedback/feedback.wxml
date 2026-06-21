@@ -119,6 +119,9 @@
         </view>
       </view>
       <view wx:if="{{caseDetail.canReply}}" class="card form-card">
+        <view wx:if="{{!campusVerified}}" class="tip-banner warn-banner">
+          <text>完成校园邮箱认证后可回应案卷。</text>
+        </view>
         <textarea
           class="reason-input"
           placeholder="{{meta.placeholder}}"
@@ -149,6 +152,9 @@
 
   <!-- 提交申诉/举报 -->
   <block wx:else>
+    <view wx:if="{{!campusVerified}}" class="tip-banner warn-banner">
+      <text>完成 @cau.edu.cn 校园邮箱认证后可提交申诉/举报，当前仅可浏览。</text>
+    </view>
     <view class="card form-card">
       <textarea
         class="reason-input"

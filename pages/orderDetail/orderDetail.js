@@ -7,6 +7,8 @@ const publish = require('../../utils/publish.js')
 const chat = require('../../utils/chat.js')
 const notice = require('../../utils/notice.js')
 const cloudImage = require('../../utils/cloudImage.js')
+const userNick = require('../../utils/userNick.js')
+const itemLock = require('../../utils/itemLock.js')
 
 const STATUS_MAP = {
   PENDING_CONFIRM: '待卖家确认',
@@ -31,6 +33,7 @@ Page({
     createdAtText: '',
     buyerName: '',
     sellerName: '',
+    hideBuyerRow: false,
     // 普通商品按钮
     showPay: false,
     showReceive: false,
@@ -38,6 +41,7 @@ Page({
     showShip: false,
     showReceiveMoney: false,
     showConfirmOrder: false,  // 卖家确认订单（PENDING_CONFIRM）
+    sellerPendingBuyers: [],
     showChat: false,          // 买卖双方联系对方
     // 关联跑腿子订单
     showRequestErrand: false,
@@ -152,8 +156,12 @@ Page({
       const isBuyer = !!currentUserId && currentUserId === rowBuyerId
       const isSeller = !!currentUserId && currentUserId === rowSellerId
 
-      const buyerName = isBuyer ? '我' : (rowBuyerId || '未知')
-      const sellerName = isSeller ? '我' : (rowSellerId || '未知')
+      let buyerName = '未知'
+      let sellerName = '未知'
+      let hideBuyerRow = false
+
+      if (isBuyer) buyerName = '我'
+      if (isSeller) sellerName = '我'
 
       let showPay = false, showReceive = false, showCancel = false
       let showShip = false, showReceiveMoney = false, showRemind = false, showConfirmOrder = false
@@ -256,40 +264,59 @@ Page({
       let payExpireAt = 0
       let countdown = ''
       let rawExpire = row.payExpireAt
+      let sellerPendingBuyers = []
 
-      // 若订单没有 payExpireAt，尝试从关联 Item 的 lockExpireAt 获取
-      if (!rawExpire && row.itemId) {
+      if (postType !== 'errand' && row.itemId) {
         try {
           const item = await Bmob.Query('Item').get(row.itemId)
-          rawExpire = item.lockExpireAt
+          if (isSeller && status === 'PENDING_CONFIRM') {
+            sellerPendingBuyers = await itemLock.enrichLockBuyers(item.lockBuyers)
+          }
+          if (status === 'PENDING_CONFIRM') {
+            rawExpire = rawExpire || item.lockExpireAt
+            if (!rawExpire) {
+              const deadline = itemLock.getSellerConfirmDeadline(item)
+              if (deadline) payExpireAt = deadline
+            }
+          } else if (!rawExpire) {
+            rawExpire = item.lockExpireAt
+          }
         } catch (e) {
           // ignore
         }
       }
 
-      if (rawExpire) {
-        const expireTime = new Date(
-          rawExpire.iso || rawExpire
-        ).getTime()
+      if (!payExpireAt && rawExpire) {
+        const expireTime = new Date(rawExpire.iso || rawExpire).getTime()
         if (!isNaN(expireTime)) {
           payExpireAt = expireTime
-          const remain = Math.max(0, expireTime - Date.now())
-          countdown = this.formatCountdown(remain)
-          // PENDING_CONFIRM 超时 → 自动确认；IN_TRADING 超时 → 自动取消
-          if (remain <= 0 && status === 'PENDING_CONFIRM' && postType !== 'errand') {
-            this.autoConfirmOrder(id)
-          } else if (remain <= 0 && status === 'IN_TRADING' && postType !== 'errand') {
-            this.autoCancelOrder(id)
-          }
         }
       }
 
-      const terminal =
-        status === 'CANCELLED' || (status === 'COMPLETED' && postType !== 'errand')
+      if (payExpireAt) {
+        const remain = Math.max(0, payExpireAt - Date.now())
+        countdown = this.formatCountdown(remain)
+        if (remain <= 0 && status === 'PENDING_CONFIRM' && postType !== 'errand') {
+          this.autoConfirmOrder(id)
+        } else if (remain <= 0 && status === 'IN_TRADING' && postType !== 'errand') {
+          this.autoCancelOrder(id)
+        }
+      }
+
+      if (postType === 'errand') {
+        if (!isBuyer && rowBuyerId) buyerName = await userNick.resolveUserNickName(rowBuyerId)
+        if (!isSeller && rowSellerId) sellerName = await userNick.resolveUserNickName(rowSellerId)
+      } else if (isSeller && status === 'PENDING_CONFIRM') {
+        hideBuyerRow = true
+      } else {
+        if (!isBuyer && rowBuyerId) buyerName = await userNick.resolveUserNickName(rowBuyerId)
+        if (!isSeller && rowSellerId) sellerName = await userNick.resolveUserNickName(rowSellerId)
+      }
+
       const showDispute =
         !!currentUserId &&
         (isBuyer || isSeller) &&
-        !terminal &&
+        status !== 'CANCELLED' &&
         !row.frozen
 
       let showReviewButton = false
@@ -318,8 +345,10 @@ Page({
         statusClass: status,
         createdAtText: row.createdAt ? util.formatTime(row.createdAt) : '',
         buyerName, sellerName,
+        hideBuyerRow,
         showPay, showReceive, showCancel,
-        showShip, showReceiveMoney, showRemind, showConfirmOrder,
+        showShip, showReceiveMoney,         showRemind, showConfirmOrder,
+        sellerPendingBuyers,
         showChat,
         showAcceptErrand, showCancelAccept, showGroupChat,
         showSetPickupCode, showSetDeliveryCode,
@@ -371,9 +400,16 @@ Page({
       const orderRow = await Bmob.Query('Order').get(orderId)
       if (orderRow.status !== 'PENDING_CONFIRM') return
       if (orderRow.frozen) return
-      orderRow.set('status', 'IN_TRADING')
-      await orderRow.save()
-      util.showToast('卖家未在24小时内确认，订单已自动确认')
+      const itemId = orderRow.itemId
+      if (!itemId) return
+      const result = await itemLock.autoConfirmFirstBuyer(itemId)
+      if (!result) {
+        const buyerId = (orderRow.buyerId && orderRow.buyerId.objectId) || orderRow.buyerId
+        if (buyerId) {
+          await itemLock.confirmBuyerForItem(itemId, buyerId, { auto: true })
+        }
+      }
+      util.showToast('卖家未在24小时内确认，已自动确认首位拍下买家')
       this.loadOrderDetail(orderId)
     } catch (e) {
       console.error('自动确认订单失败', e)
@@ -390,11 +426,7 @@ Page({
 
       const itemId = orderRow.itemId
       if (itemId) {
-        const itemRow = await Bmob.Query('Item').get(itemId)
-        itemRow.set('lockBuyerId', '')
-        itemRow.unset('lockExpireAt')
-        itemRow.set('status', 'ON_SALE')
-        await itemRow.save()
+        await itemLock.releaseItemToOnSale(itemId)
       }
 
       try {
@@ -407,6 +439,26 @@ Page({
       this.loadOrderDetail(orderId)
     } catch (e) {
       console.error('自动取消订单失败', e)
+    }
+  },
+
+  async onConfirmPendingBuyer(e) {
+    const buyerId = e.currentTarget.dataset.buyerId
+    const itemId = this.data.order && this.data.order.itemId
+    if (!buyerId || !itemId) return
+    const target = (this.data.sellerPendingBuyers || []).find((row) => row.buyerId === buyerId)
+    const name = target ? target.nickName : '该买家'
+    const ok = await util.showModal('确认卖给TA', `确认将商品卖给 ${name} 吗？`)
+    if (!ok) return
+    try {
+      util.showLoading('处理中...')
+      await itemLock.confirmBuyerForItem(itemId, buyerId)
+      util.hideLoading()
+      util.showToast('已确认，等待买家付款', 'success')
+      this.loadOrderDetail(this.orderId)
+    } catch (err) {
+      util.hideLoading()
+      util.showToast((err && err.message) || '确认失败')
     }
   },
 
@@ -481,44 +533,21 @@ Page({
   },
 
   async onConfirmOrder() {
-    const ok = await util.showModal('确认订单', '确认接受该买家的购买请求？确认后请尽快与买家完成交付并确认收款（1小时内）。')
+    const ok = await util.showModal('确认订单', '确认接受该买家的购买请求？确认后其他拍下买家将自动取消，商品将从搜索中隐藏。')
     if (!ok) return
     try {
       util.showLoading('处理中...')
       const orderId = this.data.order.objectId
       const itemId = this.data.order.itemId
-      const expireAt = new Date(Date.now() + 60 * 60 * 1000)
-
-      const orderRow = await Bmob.Query('Order').get(orderId)
-      orderRow.set('status', 'IN_TRADING')
-      orderRow.set('payExpireAt', { __type: 'Date', iso: expireAt.toISOString() })
-      await orderRow.save()
-
-      if (itemId) {
-        const itemRow = await Bmob.Query('Item').get(itemId)
-        itemRow.set('status', 'IN_TRADING')
-        itemRow.set('lockExpireAt', { __type: 'Date', iso: expireAt.toISOString() })
-        await itemRow.save()
-      }
-
-      // 通知买家
-      const normId2 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
-      notice.notifyOrderEvent(
-        normId2(this.data.order.buyerId),
-        notice.NOTICE_TYPE.ORDER_CONFIRMED,
-        '卖家已确认订单',
-        `卖家已确认您的购买请求，请尽快付款`,
-        orderId,
-        itemId
-      ).catch(() => {})
-
+      const buyerId = (this.data.order.buyerId && this.data.order.buyerId.objectId) || this.data.order.buyerId
+      await itemLock.confirmBuyerForItem(itemId, buyerId)
       util.hideLoading()
       util.showToast('已确认订单，等待买家确认付款', 'success')
       this.loadOrderDetail(orderId)
     } catch (e) {
       util.hideLoading()
       console.error(e)
-      util.showToast('操作失败')
+      util.showToast((e && e.message) || '操作失败')
     }
   },
 
@@ -575,19 +604,31 @@ Page({
     try {
       util.showLoading('处理中...')
       const order = this.data.order
+      const normId5 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
       const orderRow = await Bmob.Query('Order').get(order.objectId)
       orderRow.set('status', 'CANCELLED')
       await orderRow.save()
       // 释放商品锁定，重新上架
       if (order.itemId) {
         const itemRow = await Bmob.Query('Item').get(order.itemId)
-        itemRow.set('lockBuyerId', '')
-        itemRow.set('status', 'ON_SALE')
-        await itemRow.save()
+        const buyerId = normId5(order.buyerId)
+        if (order.status === 'PENDING_CONFIRM') {
+          const lockBuyers = itemLock.removeLockBuyer(itemRow.lockBuyers, buyerId)
+          itemRow.set('lockBuyers', lockBuyers)
+          if (!lockBuyers.length) itemRow.unset('lockExpireAt')
+          await itemRow.save()
+          const sellerId = normId5(order.sellerId)
+          const memberIds = [sellerId]
+          lockBuyers.forEach((entry) => {
+            if (entry.buyerId && memberIds.indexOf(entry.buyerId) < 0) memberIds.push(entry.buyerId)
+          })
+          await itemLock.syncChatMembers(order.itemId, memberIds)
+        } else {
+          await itemLock.releaseItemToOnSale(order.itemId)
+        }
       }
       // 通知对方
       const u2 = auth.getUserInfo()
-      const normId5 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
       const bId = normId5(order.buyerId)
       const sId = normId5(order.sellerId)
       const notifyId = (u2 && u2.objectId === bId) ? sId : bId
@@ -848,6 +889,7 @@ Page({
 
   async onDispute() {
     if (!(await getApp().checkAndLogin())) return
+    if (!auth.guardCampusAction({ tip: '完成校园认证后可发起申诉' })) return
     const order = this.data.order
     if (!order || !order.objectId) return
     wx.navigateTo({

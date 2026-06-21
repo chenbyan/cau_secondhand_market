@@ -5,6 +5,7 @@ const publish = require('../../../utils/publish.js')
 const cloudImage = require('../../../utils/cloudImage.js')
 const itemStatus = require('../../../utils/itemStatus.js')
 const credit = require('../../../utils/credit.js')
+const itemRectify = require('../../../utils/itemRectify.js')
 
 const TYPE_LABEL = {
   goods: '物品',
@@ -212,7 +213,11 @@ Page({
       list = (list || []).filter(
         (r) => !r.postType || r.postType === publish.POST_TYPE.GOODS
       )
-      const items = await this.mapRowsToItems(list, publishTab)
+      const offlineIds = list
+        .filter((r) => (r.status || '') === 'OFFLINE')
+        .map((r) => r.objectId)
+      const rectifyMap = await itemRectify.fetchPendingRectifyMap(offlineIds)
+      const items = await this.mapRowsToItems(list, publishTab, rectifyMap)
       const merged = reset ? items : this.data.items.concat(items)
       this.setData({
         items: merged,
@@ -227,7 +232,7 @@ Page({
     }
   },
 
-  async mapRowsToItems(list, publishTab) {
+  async mapRowsToItems(list, publishTab, rectifyMap = {}) {
     const items = []
     for (let i = 0; i < (list || []).length; i++) {
       const row = list[i]
@@ -241,7 +246,11 @@ Page({
       }
       const status = row.status || 'ON_SALE'
       const meta = itemStatus.getStatusMeta(postType, status)
-      const needsRectify = !!row.rectifyRequired && status === 'OFFLINE'
+      const goodsRectify = itemRectify.needsGoodsRectify(row, rectifyMap)
+      const needsRectify = isErrand
+        ? !!row.rectifyRequired && status === 'OFFLINE'
+        : goodsRectify
+      const rectifyInfo = !isErrand && goodsRectify ? rectifyMap[row.objectId] : null
       let routeHint = ''
       if (isErrand && row.pickupAddr && row.deliveryAddr) {
         routeHint = `${row.pickupAddr} → ${row.deliveryAddr}`
@@ -265,7 +274,7 @@ Page({
         statusLabel: needsRectify ? '已取消 · 待整改' : meta.label,
         statusClass: meta.cls,
         rectifyRequired: needsRectify,
-        rectifyReason: row.rectifyReason || '',
+        rectifyReason: rectifyInfo ? rectifyInfo.reason : (row.rectifyReason || ''),
         routeHint,
         canEdit: isErrand ? status === 'ON_SALE' : status === 'ON_SALE',
         createdAtText: row.createdAt ? util.formatTime(row.createdAt) : ''
@@ -354,14 +363,17 @@ Page({
     }
     const id = e.currentTarget.dataset.id
     const item = this.data.items.find((x) => x.objectId === id)
+    if (item && item.rectifyRequired && !item.isErrand) {
+      util.showToast('该商品需先编辑整改后再上架')
+      return
+    }
     const isErrand = item && item.isErrand
     try {
       util.showLoading('处理中...')
-      await this.setItemStatus(id, 'ON_SALE', {
-        rectifyRequired: false,
-        rectifyReason: '',
-        ...(isErrand ? {} : { offlineReason: '', offlineSource: '' })
-      })
+      const extra = isErrand
+        ? { rectifyRequired: false }
+        : {}
+      await this.setItemStatus(id, 'ON_SALE', extra)
       util.hideLoading()
       util.showToast(isErrand ? '已重新发布' : '已重新上架')
       this.onRefresh()

@@ -81,7 +81,7 @@ Page({
       return
     }
     if (!util.validateEmail(email)) {
-      util.showToast('请输入有效的 .edu.cn 邮箱')
+      util.showToast('请输入有效的 @cau.edu.cn 邮箱')
       return
     }
     try {
@@ -123,7 +123,7 @@ Page({
       return
     }
     if (!util.validateEmail(email)) {
-      util.showToast('请输入有效的 .edu.cn 邮箱')
+      util.showToast('请输入有效的 @cau.edu.cn 邮箱')
       return
     }
     if (!/^\d{6}$/.test(code)) {

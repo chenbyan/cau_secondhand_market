@@ -57,7 +57,13 @@
           <!-- 已下架/已取消 -->
           <block wx:if="{{item.status === 'OFFLINE'}}">
             <button wx:if="{{item.rectifyRequired && !item.isErrand}}" size="mini" class="btn-action" data-item="{{item}}" catchtap="onEdit">编辑整改</button>
-            <button size="mini" class="btn-action" data-id="{{item.objectId}}" catchtap="onOnline">
+            <button
+              wx:if="{{!item.rectifyRequired || item.isErrand}}"
+              size="mini"
+              class="btn-action"
+              data-id="{{item.objectId}}"
+              catchtap="onOnline"
+            >
               {{item.isErrand ? '重新发布' : '重新上架'}}
             </button>
             <button size="mini" class="btn-action danger" data-id="{{item.objectId}}" catchtap="onDelete">删除</button>

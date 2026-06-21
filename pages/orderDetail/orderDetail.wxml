@@ -13,7 +13,17 @@
 
   <!-- 卖家端提醒 -->
   <view class="remind-box seller-remind" wx:if="{{showConfirmOrder}}">
-    <text class="remind-text">⏳ 有买家拍下，请在24小时内确认订单{{countdown ? '（剩余 ' + countdown + '）' : ''}}</text>
+    <text class="remind-text">有买家拍下，请在24小时内选择一位确认{{countdown ? '（剩余 ' + countdown + '）' : ''}}，超时将自动确认首位买家</text>
+  </view>
+  <view class="card seller-pending-card" wx:if="{{showConfirmOrder && sellerPendingBuyers.length}}">
+    <view class="seller-pending-title">拍下用户</view>
+    <view class="seller-pending-item flex-row" wx:for="{{sellerPendingBuyers}}" wx:key="buyerId">
+      <view class="seller-pending-meta flex-col">
+        <text class="seller-pending-name">{{item.nickName}}</text>
+        <text class="text-muted seller-pending-time">{{item.lockTimeText}}</text>
+      </view>
+      <button size="mini" class="btn-action" data-buyer-id="{{item.buyerId}}" bindtap="onConfirmPendingBuyer">确认卖给TA</button>
+    </view>
   </view>
   <view class="remind-box seller-remind" wx:elif="{{showRemind && statusClass === 'IN_TRADING'}}">
     <text class="remind-text">⏳ 已确认订单，等待买家确认付款</text>
@@ -32,7 +42,7 @@
   </view>
 
   <view class="card info-card" wx:if="{{order}}">
-    <view class="info-row flex-row">
+    <view class="info-row flex-row" wx:if="{{!hideBuyerRow}}">
       <text class="label">{{order.postType === 'errand' ? '发布者' : '买家'}}</text>
       <text class="value">{{buyerName}}</text>
     </view>

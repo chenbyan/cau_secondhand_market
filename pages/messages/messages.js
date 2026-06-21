@@ -59,7 +59,7 @@ Page({
         const updatedAtIso = typeof r.updatedAt === 'string'
           ? r.updatedAt
           : (r.updatedAt && r.updatedAt.iso) || ''
-        const unread = await chat.getUnreadCountForRoom(r.objectId, updatedAtIso)
+        const unread = await chat.getUnreadCountForRoom(r.objectId, updatedAtIso, u.objectId)
         return {
           ...r,
           unread,
@@ -168,6 +168,7 @@ Page({
       allowFrozen: true
     })) return
     if (roomId && itemId) {
+      chat.markRoomRead(roomId)
       wx.navigateTo({
         url: `/pages/chatRoom/chatRoom?roomId=${roomId}&itemId=${itemId}`
       })

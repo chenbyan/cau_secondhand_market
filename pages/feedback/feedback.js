@@ -27,6 +27,7 @@ Page({
     loadError: '',
     loading: true,
     loggedIn: false,
+    campusVerified: false,
     orderId: '',
     targetType: 'Item',
     targetId: '',
@@ -51,6 +52,8 @@ Page({
   },
 
   async onShow() {
+    const campusVerified = auth.checkCampusVerified()
+    this.setData({ campusVerified })
     const mode = this.data.mode
     if (mode === 'list') {
       await this.loadList()
@@ -202,6 +205,7 @@ Page({
   },
 
   async onChooseImages() {
+    if (!auth.guardCampusAction({ tip: '完成校园认证后可上传凭证' })) return
     const remain = ticket.MAX_EVIDENCE_IMAGES - this.data.evidenceImages.length
     if (remain <= 0) {
       util.showToast(`最多上传 ${ticket.MAX_EVIDENCE_IMAGES} 张`)
@@ -255,6 +259,7 @@ Page({
   },
 
   async onCancelTicket(e) {
+    if (!auth.guardCampusAction({ tip: '完成校园认证后可操作' })) return
     const id = e.currentTarget.dataset.id
     if (!id || this.data.cancellingId) return
     const ok = await util.showModal('撤销工单', '确定撤销吗？订单申诉将同时解除订单冻结。')
@@ -277,10 +282,7 @@ Page({
 
   async onSubmit() {
     if (this.data.submitting) return
-    if (!auth.checkLoginStatus()) {
-      wx.navigateTo({ url: '/pages/login/login' })
-      return
-    }
+    if (!auth.guardCampusAction({ tip: '完成校园认证后可提交申诉/举报' })) return
 
     const evidence = this.getEvidenceIds()
     this.setData({ submitting: true })

@@ -5,6 +5,7 @@
 const Bmob = require('./bmob.js')
 const auth = require('./auth.js')
 const publish = require('./publish.js')
+const itemLock = require('./itemLock.js')
 
 const LOCAL_ROOMS_KEY = 'chatRoomsLocal'
 const LOCAL_MSG_PREFIX = 'chatMsgs_'
@@ -17,22 +18,91 @@ const sendingKeys = {}
 const parseJson = (v, fallback) => {
   if (!v) return fallback
   if (Array.isArray(v)) return v
-  try {
-    return JSON.parse(v)
-  } catch (e) {
-    return fallback
+  if (typeof v === 'string') {
+    const trimmed = v.trim()
+    if (!trimmed) return fallback
+    try {
+      return JSON.parse(trimmed)
+    } catch (e) {
+      return trimmed.split(',').map((s) => s.trim()).filter(Boolean)
+    }
   }
+  return fallback
+}
+
+const normUserId = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  return value.objectId || value.id || ''
+}
+
+const memberIncludes = (memberIds, userId) => {
+  const uid = normUserId(userId)
+  if (!uid) return false
+  return (memberIds || []).some((id) => normUserId(id) === uid)
+}
+
+const normalizeLockBuyersForChat = (raw) => {
+  if (!raw) return []
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => {
+        if (!entry) return ''
+        if (typeof entry === 'string') return entry
+        return entry.buyerId || entry.id || ''
+      })
+      .filter(Boolean)
+  }
+  return itemLock.normalizeLockBuyers(raw).map((entry) => entry.buyerId)
+}
+
+const roomTimestamp = (room) => {
+  const raw = room && room.updatedAt
+  if (!raw) return 0
+  if (typeof raw === 'number') return raw
+  if (typeof raw === 'string') return new Date(raw).getTime() || 0
+  if (raw.iso) return new Date(raw.iso).getTime() || 0
+  return 0
+}
+
+const isChatTableMissing = (error) => {
+  const msg = String((error && error.message) || error || '').toLowerCase()
+  return msg.indexOf('object not found') >= 0 || msg.indexOf('chatroom') >= 0 && msg.indexOf('not found') >= 0
 }
 
 const memberIdsForItem = (row, currentUserId) => {
   const sellerId = publish.getSellerId(row)
   const runnerId = (row.runnerId && row.runnerId.objectId) || row.runnerId || ''
+  const lockBuyerId = row.lockBuyerId || ''
+  const status = row.status || 'ON_SALE'
+
+  if (row.postType !== publish.POST_TYPE.ERRAND && lockBuyerId && (status === 'IN_TRADING' || status === 'SHIPPED')) {
+    return [sellerId, lockBuyerId].filter(Boolean)
+  }
+
+  const lockBuyerIds = normalizeLockBuyersForChat(row.lockBuyers)
   const ids = [sellerId]
-  if (currentUserId && ids.indexOf(currentUserId) < 0) ids.push(currentUserId)
+  lockBuyerIds.forEach((buyerId) => {
+    if (buyerId && ids.indexOf(buyerId) < 0) ids.push(buyerId)
+  })
+  const uid = normUserId(currentUserId)
+  if (uid && ids.indexOf(uid) < 0) ids.push(uid)
   if (row.postType === publish.POST_TYPE.ERRAND && runnerId) {
     if (ids.indexOf(runnerId) < 0) ids.push(runnerId)
   }
   return ids.filter(Boolean)
+}
+
+const mergeMemberIds = (row, currentUserId, existingMembers) => {
+  const fromItem = memberIdsForItem(row, currentUserId)
+  const sellerId = publish.getSellerId(row)
+  const lockBuyerId = row.lockBuyerId || ''
+  const status = row.status || 'ON_SALE'
+  if (row.postType !== publish.POST_TYPE.ERRAND && lockBuyerId && (status === 'IN_TRADING' || status === 'SHIPPED')) {
+    return fromItem
+  }
+  const merged = [...parseJson(existingMembers, []), ...fromItem]
+  return [...new Set(merged.map(normUserId).filter(Boolean))]
 }
 
 const roomTitle = (row) => {
@@ -47,7 +117,7 @@ const tryBmobRoom = async (row, currentUserId) => {
     bmobAvailable = true
     return roomId
   } catch (e) {
-    bmobAvailable = false
+    if (isChatTableMissing(e)) bmobAvailable = false
     throw e
   }
 }
@@ -94,7 +164,7 @@ const ensureBmobRoom = async (row, currentUserId) => {
   q.equalTo('itemId', '==', row.objectId)
   q.limit(1)
   const list = await q.find()
-  const members = memberIdsForItem(row, currentUserId)
+  const members = mergeMemberIds(row, currentUserId, list && list.length ? list[0].memberIds : [])
   if (list && list.length) {
     const rec = await Bmob.Query('ChatRoom').get(list[0].objectId)
     rec.set('memberIds', JSON.stringify(members))
@@ -164,28 +234,52 @@ const openChatForItem = async (itemId, options = {}) => {
   return roomId
 }
 
+const mapBmobRoom = (r) => ({
+  objectId: r.objectId,
+  itemId: r.itemId,
+  title: r.title,
+  memberIds: parseJson(r.memberIds, []).map(normUserId).filter(Boolean),
+  lastMsg: r.lastMsg || '',
+  updatedAt: r.updatedAt,
+  postType: r.postType
+})
+
 const listRoomsForUser = async (userId) => {
-  if (!userId) return []
+  const uid = normUserId(userId)
+  if (!uid) return []
+
+  let bmobRooms = []
   try {
     const q = Bmob.Query('ChatRoom')
     q.order('-updatedAt')
-    q.limit(50)
+    q.limit(200)
     const all = await q.find()
-    return (all || [])
-      .map((r) => ({
-        objectId: r.objectId,
-        itemId: r.itemId,
-        title: r.title,
-        memberIds: parseJson(r.memberIds, []),
-        lastMsg: r.lastMsg || '',
-        updatedAt: r.updatedAt,
-        postType: r.postType
-      }))
-      .filter((r) => r.memberIds.indexOf(userId) >= 0)
+    bmobRooms = (all || []).map(mapBmobRoom).filter((r) => memberIncludes(r.memberIds, uid))
+    bmobAvailable = true
   } catch (e) {
     console.warn('listRooms Bmob', e)
-    return getLocalRooms().filter((r) => r.memberIds.indexOf(userId) >= 0)
+    if (isChatTableMissing(e)) bmobAvailable = false
   }
+
+  const localRooms = getLocalRooms()
+    .map((r) => ({
+      ...r,
+      memberIds: parseJson(r.memberIds, []).map(normUserId).filter(Boolean)
+    }))
+    .filter((r) => memberIncludes(r.memberIds, uid))
+
+  const merged = new Map()
+  const putRoom = (room) => {
+    const key = room.itemId || room.objectId
+    if (!key) return
+    const prev = merged.get(key)
+    if (!prev || roomTimestamp(room) >= roomTimestamp(prev)) {
+      merged.set(key, room)
+    }
+  }
+  bmobRooms.forEach(putRoom)
+  localRooms.forEach(putRoom)
+  return Array.from(merged.values()).sort((a, b) => roomTimestamp(b) - roomTimestamp(a))
 }
 
 const listMessages = async (roomId) => {
@@ -209,7 +303,7 @@ const listMessages = async (roomId) => {
       createdAt: m.createdAt
     }))
   } catch (e) {
-    bmobAvailable = false
+    if (isChatTableMissing(e)) bmobAvailable = false
     const key = LOCAL_MSG_PREFIX + roomId
     return wx.getStorageSync(key) || []
   }
@@ -244,10 +338,11 @@ const sendMessage = async (roomId, content) => {
         room.set('lastMsg', text.slice(0, 60))
         await room.save()
       } catch (e2) { /* ignore */ }
+      markRoomRead(roomId)
       delete sendingKeys[sendKey]
       return msg
     } catch (e) {
-      bmobAvailable = false
+      if (isChatTableMissing(e)) bmobAvailable = false
     }
   }
   // 本地存储兜底
@@ -262,6 +357,7 @@ const sendMessage = async (roomId, content) => {
     rooms[idx].updatedAt = Date.now()
     saveLocalRooms(rooms)
   }
+  markRoomRead(roomId)
   delete sendingKeys[sendKey]
   return msg
 }
@@ -279,31 +375,38 @@ const markRoomRead = (roomId) => {
   } catch (e) {}
 }
 
-const getUnreadCountForRoom = async (roomId, roomUpdatedAtIso) => {
+const getUnreadCountForRoom = async (roomId, roomUpdatedAtIso, userId) => {
   if (!roomId) return 0
   const map = getLastReadMap()
   const lastRead = map[roomId]
-  const updatedTs = roomUpdatedAtIso ? new Date(roomUpdatedAtIso).getTime() : 0
-  if (!lastRead) {
-    return updatedTs > 0 ? 1 : 0
+  const lastReadTs = lastRead ? new Date(lastRead).getTime() : 0
+  const selfId = normUserId(userId || (auth.getUserInfo() && auth.getUserInfo().objectId))
+
+  const countFromList = (list) => {
+    return (list || []).filter((m) => {
+      const senderId = normUserId(m.senderId)
+      if (selfId && senderId === selfId) return false
+      const mIso = typeof m.createdAt === 'string' ? m.createdAt : (m.createdAt && m.createdAt.iso) || ''
+      if (!mIso) return false
+      return new Date(mIso).getTime() > lastReadTs
+    }).length
   }
-  const lastReadTs = new Date(lastRead).getTime()
-  if (!updatedTs || updatedTs <= lastReadTs) return 0
-  if (roomId.startsWith('local_')) return 1
+
+  if (roomId.startsWith('local_')) {
+    const key = LOCAL_MSG_PREFIX + roomId
+    return Math.min(countFromList(wx.getStorageSync(key) || []), 99)
+  }
+
   try {
     const q = Bmob.Query('ChatMessage')
     q.equalTo('roomId', '==', roomId)
     q.order('createdAt')
     q.limit(99)
     const list = await q.find()
-    if (!list || !list.length) return 0
-    const count = list.filter((m) => {
-      const mIso = typeof m.createdAt === 'string' ? m.createdAt : (m.createdAt && m.createdAt.iso) || ''
-      return mIso && new Date(mIso).getTime() > lastReadTs
-    }).length
-    return Math.min(count, 99)
+    return Math.min(countFromList(list), 99)
   } catch (e) {
-    return 1
+    if (!lastRead && roomUpdatedAtIso) return 0
+    return 0
   }
 }
 

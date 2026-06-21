@@ -11,6 +11,34 @@
   padding-bottom: 24rpx;
 }
 
+.rectify-tip {
+  margin: 20rpx 24rpx 0;
+  padding: 24rpx;
+  background: #fff7e6;
+  border: 1rpx solid #ffd591;
+}
+
+.rectify-tip-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #d46b08;
+  margin-bottom: 12rpx;
+}
+
+.rectify-tip-desc,
+.rectify-tip-hint {
+  display: block;
+  font-size: 24rpx;
+  color: #8c5a12;
+  line-height: 1.6;
+}
+
+.rectify-tip-hint {
+  margin-top: 8rpx;
+  color: #ad6800;
+}
+
 .section {
   margin-top: 20rpx;
 }

@@ -7,6 +7,8 @@ const cloudImage = require('../../utils/cloudImage.js')
 Page({
   data: {
     editId: '',
+    rectifyRequired: false,
+    rectifyReason: '',
     categories: publish.GOODS_CATEGORIES,
     categoryIndex: 0,
     form: {
@@ -70,20 +72,47 @@ Page({
         return
       }
       let images = []
+      let rawImages = []
       if (row.images) {
         try {
-          images = typeof row.images === 'string' ? JSON.parse(row.images) : row.images
+          const parsed = typeof row.images === 'string' ? JSON.parse(row.images) : row.images
+          rawImages = Array.isArray(parsed) ? parsed.map(String) : []
+          images = rawImages.slice()
         } catch (e) {
-          images = row.coverImage ? [row.coverImage] : []
+          rawImages = row.coverImage ? [String(row.coverImage)] : []
+          images = rawImages.slice()
         }
       } else if (row.coverImage) {
-        images = [row.coverImage]
+        rawImages = [String(row.coverImage)]
+        images = rawImages.slice()
       }
       images = await cloudImage.resolveImageUrls(images)
       const cat = row.category || publish.GOODS_CATEGORIES[0]
       const categoryIndex = Math.max(0, publish.GOODS_CATEGORIES.indexOf(cat))
+      const rectifyRequired = !!(row.rectifyRequired && row.status === 'OFFLINE')
+      this._rectifyRequired = rectifyRequired
+      this._rawImages = rawImages
+      this._rectifySnapshot = {
+        title: (row.title || '').trim(),
+        description: (row.description || '').trim(),
+        price: Number(row.price) || 0,
+        category: cat
+      }
+      let rectifyReason = ''
+      if (rectifyRequired) {
+        rectifyReason = row.rectifyReason || ''
+      } else if (row.status === 'OFFLINE') {
+        const itemRectify = require('../../utils/itemRectify.js')
+        const info = await itemRectify.getRectifyInfoForItem(id)
+        if (info) {
+          this._rectifyRequired = true
+          rectifyReason = info.reason || ''
+        }
+      }
       this.setData({
         categoryIndex,
+        rectifyRequired: this._rectifyRequired,
+        rectifyReason,
         form: {
           title: row.title || '',
           description: row.description || '',
@@ -221,6 +250,44 @@ Page({
     return true
   },
 
+  imagesWereEdited(rawImages, formImages) {
+    const raw = rawImages || []
+    const form = formImages || []
+    if (form.length !== raw.length) return true
+    for (let i = 0; i < form.length; i++) {
+      const next = String(form[i] || '')
+      const prev = String(raw[i] || '')
+      if (!next || !prev) return true
+      if (next === prev) continue
+      if (cloudImage.isCloudFileId(prev) && !cloudImage.isCloudFileId(next)) continue
+      if (cloudImage.isCloudFileId(next) && next !== prev) return true
+      if (!cloudImage.isCloudFileId(next) && !cloudImage.isCloudFileId(prev) && next !== prev) {
+        return true
+      }
+    }
+    return false
+  },
+
+  hasRectifyChanges() {
+    const { form } = this.data
+    const snapshot = this._rectifySnapshot || {}
+    if ((form.title || '').trim() !== snapshot.title) return true
+    if ((form.description || '').trim() !== snapshot.description) return true
+    if (parseFloat(form.price) !== snapshot.price) return true
+    if (form.category !== snapshot.category) return true
+    return this.imagesWereEdited(this._rawImages, form.images)
+  },
+
+  buildImagesForSave(formImages) {
+    const raw = this._rawImages || []
+    return (formImages || []).map((url, index) => {
+      const next = String(url || '')
+      if (cloudImage.isCloudFileId(next)) return next
+      if (raw[index] && cloudImage.isCloudFileId(raw[index])) return raw[index]
+      return next
+    })
+  },
+
   async onSubmit() {
     if (!auth.guardCampusAction({
       tip: '完成校园认证后可发布物品',
@@ -230,10 +297,16 @@ Page({
       return
     }
     if (!this.validateForm()) return
+    if (this._rectifyRequired && !this.hasRectifyChanges()) {
+      util.showToast('请先修改标题、描述、图片或价格后再提交')
+      return
+    }
     const { form, editId } = this.data
     const price = parseFloat(form.price)
-    const coverImage = form.images[0]
-    const imagesJson = JSON.stringify(form.images)
+    const imagesForSave = this.buildImagesForSave(form.images)
+    const coverImage = imagesForSave[0]
+    const imagesJson = JSON.stringify(imagesForSave)
+    const relistFields = this._rectifyRequired ? { status: 'ON_SALE' } : {}
 
     this.setData({ submitting: true })
     try {
@@ -246,12 +319,16 @@ Page({
           price,
           category: form.category,
           coverImage,
-          images: imagesJson
+          images: imagesJson,
+          ...relistFields
         },
         editId || undefined
       )
       util.hideLoading()
-      util.showToast(editId ? '保存成功' : '发布成功', 'success')
+      util.showToast(
+        this._rectifyRequired ? '整改完成，已重新上架' : editId ? '保存成功' : '发布成功',
+        'success'
+      )
       setTimeout(() => {
         if (editId) wx.navigateBack()
         else wx.redirectTo({ url: '/pages/my/myItems/myItems' })
