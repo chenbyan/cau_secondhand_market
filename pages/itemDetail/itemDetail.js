@@ -1,11 +1,13 @@
 const Bmob = require('../../utils/bmob.js')
 const auth = require('../../utils/auth.js')
 const chat = require('../../utils/chat.js')
+const notice = require('../../utils/notice.js')
 const publish = require('../../utils/publish.js')
 const cloudImage = require('../../utils/cloudImage.js')
 const util = require('../../utils/util.js')
 const itemStatus = require('../../utils/itemStatus.js')
 const credit = require('../../utils/credit.js')
+const itemLock = require('../../utils/itemLock.js')
 
 Page({
   data: {
@@ -21,6 +23,7 @@ Page({
     showOwnerBar: false,
     showItemOwnerBar: false,
     showGoodsSellerOrderBar: false,
+    showSellerLockPanel: false,
     sellerId: '',
     runnerId: '',
     isRunner: false,
@@ -32,8 +35,10 @@ Page({
     carting: false,
     buying: false,
     // 拍下相关
-    lockBuyers: [],          // 所有拍下者 [{buyerId, lockTime}]
-    isInLockBuyers: false,   // 当前用户是否在拍下列中
+    lockBuyers: [],
+    sellerLockBuyers: [],
+    sellerConfirmCountdown: '',
+    isInLockBuyers: false,
     lockInfo: null,          // 付款锁定信息 {buyerId, expireAt}
     countdown: '',
     isLockedByMe: false,
@@ -60,12 +65,23 @@ Page({
       return
     }
     this.itemId = id
+    this.itemSrc = (options && options.src) || 'item'  // 'errand' → 查 Errand 表
     this.loadDetail(id)
     this.timer = setInterval(() => {
       if (this.data.lockInfo) {
         this.updateCountdown()
       }
+      if (this.data.sellerConfirmDeadline) {
+        this.updateSellerConfirmCountdown()
+      }
     }, 1000)
+  },
+
+  onShow() {
+    // 从编辑页、接单页等返回时刷新商品信息
+    if (this.itemId && this.loadedOnce) {
+      this.loadDetail(this.itemId)
+    }
   },
 
   onUnload() {
@@ -75,7 +91,9 @@ Page({
   async loadDetail(id) {
     try {
       util.showLoading('加载中...')
-      const row = await publish.getItem(id)
+      let row = this.itemSrc === 'errand'
+        ? await publish.getErrand(id)
+        : await publish.getItem(id)
       util.hideLoading()
       if (!row) {
         util.showToast('内容不存在')
@@ -123,10 +141,16 @@ Page({
         sellerCreditTone = sellerCredit.level.tone
       }
 
-      const contactPhone =
+      const rawPhone =
+        row.phone ||
         row.contactPhone ||
         publish.parseContactFromDescription(row.description) ||
         ''
+      // 联系电话只对发布者本人和已确认接单的骑手可见
+      const contactPhone =
+        isOwner || (isRunner && (status === 'IN_TRADING' || status === 'SOLD_OUT'))
+          ? rawPhone
+          : ''
 
       const blockedUsers = publish.parseBlockedUsersFromDescription(row.description)
       const isBlockedFromAccept = blockedUsers.length > 0 && !!currentUserId && blockedUsers.includes(currentUserId)
@@ -138,46 +162,60 @@ Page({
         (isOwner || isRunner)
       ) {
         runner = await publish.getRunnerContact(row)
+        if (runner && runnerId) {
+          const runnerCredit = await credit.getUserCreditProfile(runnerId)
+          if (runnerCredit) {
+            runner.creditText = `信用分 ${runnerCredit.score} · ${runnerCredit.level.label}`
+            runner.creditTone = runnerCredit.level.tone
+          }
+        }
       }
 
       const ended = status === 'SOLD_OUT' || status === 'OFFLINE'
 
-      // 拍下者列表（Bmob Array 类型，读取为数组）
-      const lockBuyers = row.lockBuyers || []
-      const isInLockBuyers = lockBuyers.some(item => item.buyerId === currentUserId)
-
-      // 付款锁定信息
-      const lockBuyerId = row.lockBuyerId || ''
-      let lockExpireAt = 0
-      const rawLockExpire = row.lockExpireAt
-      if (rawLockExpire) {
-        if (typeof rawLockExpire === 'string') {
-          lockExpireAt = new Date(rawLockExpire).getTime()
-        } else if (rawLockExpire.iso) {
-          lockExpireAt = new Date(rawLockExpire.iso).getTime()
+      if (!isErrand && status === 'ON_SALE' && !row.lockBuyerId) {
+        try {
+          await itemLock.autoConfirmFirstBuyer(row.objectId)
+          row = await publish.getItem(id)
+        } catch (e) {
+          console.warn('autoConfirmFirstBuyer', e)
         }
       }
+
+      const lockBuyers = itemLock.normalizeLockBuyers(row.lockBuyers)
+      const isInLockBuyers = lockBuyers.some((entry) => entry.buyerId === currentUserId)
+      const sellerLockBuyers = isOwner && !isErrand
+        ? await itemLock.enrichLockBuyers(lockBuyers)
+        : []
+
+      const lockBuyerId = row.lockBuyerId || ''
+      const lockExpireAt = itemLock.parseTime(row.lockExpireAt)
+      const sellerConfirmDeadline = !isErrand && status === 'ON_SALE' && lockBuyers.length
+        ? itemLock.getSellerConfirmDeadline(row)
+        : 0
       const now = Date.now()
       let isLockedByMe = false
       let canLock = true
       let lockInfo = null
 
-      // lockBuyerId 存在（拍下后立即锁定，不再依赖 lockExpireAt）
-      if (lockBuyerId) {
-        isLockedByMe = (lockBuyerId === currentUserId)
+      if (lockBuyerId && status === 'IN_TRADING') {
+        isLockedByMe = lockBuyerId === currentUserId
         canLock = false
         if (lockExpireAt > 0) {
           lockInfo = { buyerId: lockBuyerId, expireAt: lockExpireAt }
-          if (lockExpireAt <= now) {
-            this.releasePaymentLock(row.objectId, lockBuyerId)
+          if (lockExpireAt <= now && isLockedByMe) {
+            this.releasePaymentLockAndRefresh()
           }
         }
-      }
-
-      // 商品已结束则不能拍下
-      if (ended || status === 'IN_TRADING' || status === 'SOLD_OUT') {
+      } else if (isInLockBuyers) {
         canLock = false
       }
+
+      if (ended || status !== 'ON_SALE' || isOwner || isErrand) {
+        canLock = false
+      }
+
+      this.sellerConfirmDeadline = sellerConfirmDeadline
 
       this.setData({
         loading: false,
@@ -196,8 +234,9 @@ Page({
           isOwner &&
           isErrand &&
           (status === 'ON_SALE' || status === 'IN_TRADING' || status === 'OFFLINE'),
-        showItemOwnerBar: isOwner && !isErrand && status === 'ON_SALE' && !lockBuyerId && lockBuyers.length === 0,
-        showGoodsSellerOrderBar: isOwner && !isErrand && (status === 'IN_TRADING' || (status === 'ON_SALE' && (!!lockBuyerId || lockBuyers.length > 0))),
+        showItemOwnerBar: isOwner && !isErrand && status === 'ON_SALE' && !lockBuyers.length && !lockBuyerId,
+        showGoodsSellerOrderBar: isOwner && !isErrand && (status === 'IN_TRADING' || lockBuyers.length > 0),
+        showSellerLockPanel: isOwner && !isErrand && status === 'ON_SALE' && sellerLockBuyers.length > 0,
         sellerId,
         runnerId,
         isRunner,
@@ -224,6 +263,10 @@ Page({
           status
         },
         lockBuyers,
+        sellerLockBuyers,
+        sellerConfirmCountdown: sellerConfirmDeadline
+          ? this.formatCountdown(Math.max(0, sellerConfirmDeadline - now))
+          : '',
         isInLockBuyers,
         lockInfo,
         isLockedByMe,
@@ -234,6 +277,7 @@ Page({
       if (isErrand) {
         wx.setNavigationBarTitle({ title: '跑腿详情' })
       }
+      this.loadedOnce = true
     } catch (e) {
       util.hideLoading()
       console.error(e)
@@ -251,6 +295,17 @@ Page({
       this.releasePaymentLockAndRefresh()
     } else {
       this.setData({ countdown: this.formatCountdown(remain) })
+    }
+  },
+
+  updateSellerConfirmCountdown() {
+    if (!this.sellerConfirmDeadline) return
+    const remain = Math.max(0, this.sellerConfirmDeadline - Date.now())
+    this.setData({ sellerConfirmCountdown: this.formatCountdown(remain) })
+    if (remain <= 0 && this.data.showSellerLockPanel) {
+      itemLock.autoConfirmFirstBuyer(this.itemId)
+        .then(() => this.loadDetail(this.itemId))
+        .catch(() => {})
     }
   },
 
@@ -285,7 +340,7 @@ Page({
     } catch (e) {}
   },
 
-  // 拍下：立即创建待确认订单，等待卖家确认
+  // 拍下：加入拍下列，创建待确认订单，不锁定商品
   async onLock() {
     if (!auth.guardCampusAction({
       tip: '完成校园认证后可拍下商品',
@@ -305,14 +360,26 @@ Page({
       }
       if (row.lockBuyerId) {
         util.hideLoading()
-        util.showToast('商品已被其他买家锁定')
+        util.showToast('商品已进入交易中')
         return
       }
 
-      let sellerId = ''
-      const rawSeller = row.sellerId
-      if (typeof rawSeller === 'string') sellerId = rawSeller
-      else if (rawSeller && typeof rawSeller === 'object') sellerId = rawSeller.objectId || ''
+      const lockBuyers = itemLock.normalizeLockBuyers(row.lockBuyers)
+      if (itemLock.isUserInLockBuyers(lockBuyers, u.objectId)) {
+        util.hideLoading()
+        util.showToast('您已拍下，请等待卖家确认')
+        return
+      }
+
+      const activeOrder = await this.findActiveOrder(u.objectId, this.itemId)
+      if (activeOrder) {
+        util.hideLoading()
+        util.showToast('您已有进行中的订单')
+        wx.navigateTo({ url: `/pages/orderDetail/orderDetail?id=${activeOrder.objectId}` })
+        return
+      }
+
+      let sellerId = publish.getSellerId(row)
       if (!sellerId) {
         util.hideLoading()
         util.showToast('卖家信息异常')
@@ -324,48 +391,41 @@ Page({
         return
       }
 
-      // 先锁定商品，防止并发重复拍下
-      console.log('[onLock] step1 锁定商品', { itemId: this.itemId, buyerId: u.objectId })
-      const itemRow = await Bmob.Query('Item').get(this.itemId)
-      itemRow.set('lockBuyerId', u.objectId)
-      itemRow.set('lockBuyers', [])
-      await itemRow.save()
-      console.log('[onLock] step2 商品已锁定，开始创建订单')
+      const entry = itemLock.buildLockBuyerEntry(u)
+      const nextLockBuyers = itemLock.addLockBuyer(lockBuyers, entry)
+      const sellerDeadline = itemLock.getSellerConfirmDeadline({
+        ...row,
+        lockBuyers: nextLockBuyers
+      }) || (Date.now() + itemLock.SELLER_CONFIRM_MS)
 
-      // 创建订单（PENDING_CONFIRM）
+      const itemRow = await Bmob.Query('Item').get(this.itemId)
+      itemRow.set('lockBuyers', nextLockBuyers)
+      if (!lockBuyers.length) {
+        itemRow.set('lockExpireAt', itemLock.toDateField(sellerDeadline))
+      }
+      await itemRow.save()
+
       let savedOrder
       try {
-        const orderData = {
-          buyerId: u.objectId,
-          sellerId,
-          itemId: this.itemId,
-          status: 'PENDING_CONFIRM',
-          itemTitle: row.title || '商品',
-          price: Number(row.price) || 0
-        }
-        console.log('[onLock] step3 order.set 数据:', JSON.stringify(orderData))
         const order = Bmob.Query('Order')
-        order.set('buyerId', orderData.buyerId)
-        order.set('sellerId', orderData.sellerId)
-        order.set('itemId', orderData.itemId)
-        order.set('status', orderData.status)
-        order.set('itemTitle', orderData.itemTitle)
-        order.set('price', orderData.price)
+        order.set('buyerId', u.objectId)
+        order.set('sellerId', sellerId)
+        order.set('itemId', this.itemId)
+        order.set('status', 'PENDING_CONFIRM')
+        order.set('itemTitle', row.title || '商品')
+        order.set('price', Number(row.price) || 0)
+        order.set('itemImage', row.coverImage || '')
+        order.set('payExpireAt', itemLock.toDateField(sellerDeadline))
         savedOrder = await order.save()
-        console.log('[onLock] step4 order.save 返回:', JSON.stringify(savedOrder))
       } catch (orderErr) {
-        console.error('[onLock] order.save 失败', orderErr)
-        // 释放商品锁定
-        try {
-          const itemRow2 = await Bmob.Query('Item').get(this.itemId)
-          itemRow2.set('lockBuyerId', '')
-          itemRow2.set('lockBuyers', [])
-          await itemRow2.save()
-        } catch (e2) {}
+        const rollbackRow = await Bmob.Query('Item').get(this.itemId)
+        rollbackRow.set('lockBuyers', lockBuyers)
+        if (!lockBuyers.length) rollbackRow.unset('lockExpireAt')
+        await rollbackRow.save()
         util.hideLoading()
         wx.showModal({
           title: '拍下失败',
-          content: '订单创建失败：' + ((orderErr && orderErr.message) || JSON.stringify(orderErr)),
+          content: '订单创建失败：' + ((orderErr && orderErr.message) || '请稍后重试'),
           showCancel: false
         })
         return
@@ -373,13 +433,24 @@ Page({
 
       if (!savedOrder || !savedOrder.objectId) {
         util.hideLoading()
-        wx.showModal({
-          title: '拍下失败',
-          content: '订单保存异常，objectId 为空，请截图发给开发者',
-          showCancel: false
-        })
+        util.showToast('订单保存异常')
         return
       }
+
+      const memberIds = [sellerId]
+      nextLockBuyers.forEach((item) => {
+        if (item.buyerId && memberIds.indexOf(item.buyerId) < 0) memberIds.push(item.buyerId)
+      })
+      await itemLock.syncChatMembers(this.itemId, memberIds)
+
+      notice.notifyOrderEvent(
+        sellerId,
+        notice.NOTICE_TYPE.ORDER_LOCKED,
+        '有新买家拍下商品',
+        `买家 ${entry.nickName} 已拍下「${row.title || '商品'}」，请在24小时内选择确认（超时将自动确认首位买家）`,
+        savedOrder.objectId,
+        this.itemId
+      ).catch(() => {})
 
       util.hideLoading()
       util.showToast('已拍下，等待卖家确认', 'success')
@@ -389,7 +460,7 @@ Page({
       console.error('[onLock] 失败', e)
       wx.showModal({
         title: '拍下失败',
-        content: (e && e.message) ? e.message : JSON.stringify(e),
+        content: (e && e.message) ? e.message : '请稍后重试',
         showCancel: false
       })
     } finally {
@@ -397,15 +468,16 @@ Page({
     }
   },
 
-  // 取消拍下：取消订单并释放商品锁定
+  // 取消拍下：移除拍下列并取消待确认订单
   async onCancelLock() {
-    const ok = await util.showModal('取消拍下', '确认取消拍下该商品吗？相关订单将被取消。')
+    const ok = await util.showModal('取消拍下', '确认取消拍下该商品吗？')
     if (!ok) return
     try {
       util.showLoading('处理中...')
       const u = auth.getUserInfo()
+      const row = await publish.getItem(this.itemId)
+      const lockBuyers = itemLock.removeLockBuyer(row.lockBuyers, u.objectId)
 
-      // 找到并取消该买家的待确认订单
       const q = Bmob.Query('Order')
       q.equalTo('itemId', '==', this.itemId)
       q.equalTo('buyerId', '==', u.objectId)
@@ -418,11 +490,17 @@ Page({
         await oRow.save()
       }
 
-      // 释放商品锁定
       const itemRow = await Bmob.Query('Item').get(this.itemId)
-      itemRow.set('lockBuyerId', '')
-      itemRow.set('lockBuyers', [])
+      itemRow.set('lockBuyers', lockBuyers)
+      if (!lockBuyers.length) itemRow.unset('lockExpireAt')
       await itemRow.save()
+
+      const sellerId = publish.getSellerId(row)
+      const memberIds = [sellerId]
+      lockBuyers.forEach((entry) => {
+        if (entry.buyerId && memberIds.indexOf(entry.buyerId) < 0) memberIds.push(entry.buyerId)
+      })
+      await itemLock.syncChatMembers(this.itemId, memberIds)
 
       util.hideLoading()
       util.showToast('已取消拍下')
@@ -430,6 +508,25 @@ Page({
     } catch (e) {
       util.hideLoading()
       util.showToast('操作失败')
+    }
+  },
+
+  async onSellerConfirmBuyer(e) {
+    const buyerId = e.currentTarget.dataset.buyerId
+    if (!buyerId) return
+    const target = (this.data.sellerLockBuyers || []).find((row) => row.buyerId === buyerId)
+    const name = target ? target.nickName : '该买家'
+    const ok = await util.showModal('确认卖给TA', `确认将商品卖给 ${name} 吗？确认后其他拍下买家将自动取消，商品将从搜索中隐藏。`)
+    if (!ok) return
+    try {
+      util.showLoading('处理中...')
+      await itemLock.confirmBuyerForItem(this.itemId, buyerId)
+      util.hideLoading()
+      util.showToast('已确认，等待买家付款', 'success')
+      this.loadDetail(this.itemId)
+    } catch (err) {
+      util.hideLoading()
+      util.showToast((err && err.message) || '确认失败')
     }
   },
 
@@ -569,7 +666,8 @@ Page({
   },
 
   async setItemStatus(status) {
-    const row = await Bmob.Query('Item').get(this.itemId)
+    const table = this.itemSrc === 'errand' ? 'Errand' : 'Item'
+    const row = await Bmob.Query(table).get(this.itemId)
     row.set('status', status)
     await row.save()
   },
@@ -709,7 +807,8 @@ Page({
   onContact() {
     if (this.data.carting || this.data.buying) return
     chat.openChatForItem(this.itemId, {
-      tip: this.data.isErrand ? '完成校园认证后可联系发布者' : '完成校园认证后可联系卖家'
+      tip: this.data.isErrand ? '完成校园认证后可联系发布者' : '完成校园认证后可联系卖家',
+      src: this.itemSrc
     })
   },
 
@@ -722,6 +821,7 @@ Page({
       wx.navigateTo({ url: '/pages/login/login' })
       return
     }
+    if (!auth.guardCampusAction({ tip: '完成校园认证后可举报' })) return
     wx.navigateTo({
       url: `/pages/feedback/feedback?mode=report&targetType=Item&targetId=${this.itemId}`
     })
@@ -733,11 +833,11 @@ Page({
       util.showToast('暂无接单人')
       return
     }
-    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可联系骑手' })
+    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可联系骑手', src: this.itemSrc })
   },
 
   onOpenGroupChat() {
-    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可进入群聊' })
+    chat.openChatForItem(this.itemId, { tip: '完成校园认证后可进入群聊', src: this.itemSrc })
   },
 
   async onViewErrandOrder() {
@@ -826,10 +926,10 @@ Page({
     try {
       util.showLoading('接单中...')
       const u = auth.getUserInfo()
-      const row = await publish.getItem(this.itemId)
+      const row = await publish.getErrand(this.itemId)
       const sellerId = publish.getSellerId(row)
 
-      await publish.bindRunnerToItem(this.itemId, u.objectId)
+      await publish.bindRunnerToErrand(this.itemId, u.objectId)
 
       const order = Bmob.Query('Order')
       order.set('buyerId', sellerId)
@@ -840,11 +940,21 @@ Page({
       order.set('itemTitle', row.title || '跑腿任务')
       order.set('itemImage', row.coverImage || '')
       order.set('price', row.price || 0)
-      await order.save()
+      const savedOrder = await order.save()
+
+      // 通知发布者有骑手接单
+      notice.notifyOrderEvent(
+        sellerId,
+        notice.NOTICE_TYPE.ERRAND_ACCEPTED,
+        '有骑手申请接单',
+        `您的跑腿任务「${row.title || '跑腿任务'}」有骑手接单，请进入订单查看详情`,
+        savedOrder ? savedOrder.objectId : '',
+        this.itemId
+      ).catch(() => {})
 
       util.hideLoading()
       util.showToast('接单成功，请到订单中确认开始任务', 'success')
-      await chat.openChatForItem(this.itemId, { tip: '' })
+      await chat.openChatForItem(this.itemId, { tip: '', src: this.itemSrc })
       this.loadDetail(this.itemId)
     } catch (e) {
       util.hideLoading()

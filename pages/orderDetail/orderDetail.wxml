@@ -20,7 +20,7 @@
     <text class="remind-text">⏳ 已确认订单，等待买家确认付款</text>
   </view>
   <view class="remind-box seller-remind" wx:elif="{{showReceiveMoney}}">
-    <text class="remind-text">⏳ 买家已付款，请确认收款</text>
+    <text class="remind-text">⏳ 买家已付款，请在1小时内确认收款{{countdown ? '（剩余 ' + countdown + '）' : ''}}</text>
   </view>
 
   <view class="card goods-card flex-row" wx:if="{{order}}">
@@ -129,6 +129,10 @@
     <button wx:if="{{showReceive}}" class="btn-primary" bindtap="onConfirmReceive">确认收货</button>
     <button wx:if="{{showReceiveMoney}}" class="btn-primary" bindtap="onReceiveMoney">确认收款</button>
     <button wx:if="{{showCancel}}" class="btn-outline" bindtap="onCancelOrder">取消订单</button>
+    <!-- 普通商品订单：买卖双方联系对方 -->
+    <button wx:if="{{showChat}}" class="btn-outline" bindtap="onChat">联系对方</button>
+    <!-- 关联跑腿配送群聊（买家+卖家+骑手三方） -->
+    <button wx:if="{{showLinkedChat}}" class="btn-outline" bindtap="onLinkedChat">进入配送群聊</button>
 
     <!-- 跑腿接单按钮 -->
     <button wx:if="{{showGroupChat}}" class="btn-outline" bindtap="onGroupChat">进入群聊</button>

@@ -5,6 +5,8 @@ const credit = require('../../utils/credit.js')
 const review = require('../../utils/review.js')
 const publish = require('../../utils/publish.js')
 const chat = require('../../utils/chat.js')
+const notice = require('../../utils/notice.js')
+const cloudImage = require('../../utils/cloudImage.js')
 
 const STATUS_MAP = {
   PENDING_CONFIRM: '待卖家确认',
@@ -36,10 +38,14 @@ Page({
     showShip: false,
     showReceiveMoney: false,
     showConfirmOrder: false,  // 卖家确认订单（PENDING_CONFIRM）
+    showChat: false,          // 买卖双方联系对方
     // 关联跑腿子订单
     showRequestErrand: false,
     showCancelErrand: false,
     linkedErrand: null,  // { itemId, orderId, status, statusLabel }
+    showLinkedChat: false,
+    linkedChatRoomId: '',
+    linkedChatItemId: '',
     // 跑腿专用按钮
     showAcceptErrand: false,
     showCancelAccept: false,
@@ -71,9 +77,20 @@ Page({
 
   onImageError() {
     const order = this.data.order
-    if (order && order.itemImage) {
-      this.setData({ 'order.itemImage': this.data.placeholder })
+    if (!order || this._orderImageRetried) {
+      if (order && order.itemImage) {
+        this.setData({ 'order.itemImage': this.data.placeholder })
+      }
+      return
     }
+    this._orderImageRetried = true
+    cloudImage.resolveOrderItemImage(order).then((itemImage) => {
+      if (itemImage && itemImage !== order.itemImage) {
+        this.setData({ 'order.itemImage': itemImage })
+        return
+      }
+      this.setData({ 'order.itemImage': this.data.placeholder })
+    })
   },
 
   onLoad(options) {
@@ -104,6 +121,7 @@ Page({
   },
 
   async loadOrderDetail(id) {
+    this._orderImageRetried = false
     try {
       util.showLoading('加载中...')
       const row = await Bmob.Query('Order').get(id)
@@ -151,6 +169,7 @@ Page({
       const deliveryCodeVerified = !!meta.deliveryCodeVerified
       const errandItemId = meta.errandItemId || ''
       const errandPayer = meta.errandPayer || ''
+      const linkedChatRoomId = meta.linkedChatRoomId || ''
       const errandPayerLabel = errandPayer === 'buyer' ? '买家付跑腿费' : errandPayer === 'seller' ? '卖家付跑腿费' : ''
 
       if (postType === 'errand') {
@@ -205,7 +224,7 @@ Page({
         if (status === 'PENDING_CONFIRM' || status === 'IN_TRADING' || status === 'SHIPPED') {
           if (errandItemId) {
             try {
-              const errandItem = await Bmob.Query('Item').get(errandItemId)
+              const errandItem = await Bmob.Query('Errand').get(errandItemId)
               const errandStatus = errandItem.status
               const errandStatusLabels = {
                 ON_SALE: '等待骑手接单',
@@ -286,20 +305,27 @@ Page({
         }
       }
 
+      // 普通商品订单：买卖双方均可联系对方（订单未取消时）
+      const showChat = postType !== 'errand' && (isBuyer || isSeller) && status !== 'CANCELLED'
+      const showLinkedChat = !!(linkedErrand && linkedChatRoomId)
+
       const statusMap = postType === 'errand' ? ERRAND_STATUS_MAP : STATUS_MAP
+      const itemImage = await cloudImage.resolveOrderItemImage(row)
       this.setData({
-        order: row,
+        order: { ...row, itemImage },
         statusLabel: statusMap[status] || status,
         statusClass: status,
         createdAtText: row.createdAt ? util.formatTime(row.createdAt) : '',
         buyerName, sellerName,
         showPay, showReceive, showCancel,
         showShip, showReceiveMoney, showRemind, showConfirmOrder,
+        showChat,
         showAcceptErrand, showCancelAccept, showGroupChat,
         showSetPickupCode, showSetDeliveryCode,
         showVerifyPickupCode, showVerifyDeliveryCode,
         pickupCode, deliveryCode, pickupCodeVerified, deliveryCodeVerified,
         showRequestErrand, showCancelErrand, linkedErrand,
+        showLinkedChat, linkedChatRoomId, linkedChatItemId: errandItemId,
         showReviewButton,
         reviewTip,
         reviews,
@@ -398,10 +424,23 @@ Page({
       const itemId = this.data.order.itemId
       const u = auth.getUserInfo()
 
-      // 买家确认付款：IN_TRADING → SHIPPED（等待卖家确认收款）
+      // 买家确认付款：IN_TRADING → SHIPPED（等待卖家1小时内确认收款）
+      const receiveDeadline = new Date(Date.now() + 60 * 60 * 1000)
       const orderRow = await Bmob.Query('Order').get(orderId)
       orderRow.set('status', 'SHIPPED')
+      orderRow.set('payExpireAt', { __type: 'Date', iso: receiveDeadline.toISOString() })
       await orderRow.save()
+
+      // 通知卖家
+      const normId3 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+      notice.notifyOrderEvent(
+        normId3(this.data.order.sellerId),
+        notice.NOTICE_TYPE.BUYER_PAID,
+        '买家已付款，请确认收款',
+        '买家已确认付款，请在1小时内确认收款',
+        orderId,
+        itemId
+      ).catch(() => {})
 
       // 从购物车移除
       if (u && u.objectId && itemId) {
@@ -461,6 +500,17 @@ Page({
         await itemRow.save()
       }
 
+      // 通知买家
+      const normId2 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+      notice.notifyOrderEvent(
+        normId2(this.data.order.buyerId),
+        notice.NOTICE_TYPE.ORDER_CONFIRMED,
+        '卖家已确认订单',
+        `卖家已确认您的购买请求，请尽快付款`,
+        orderId,
+        itemId
+      ).catch(() => {})
+
       util.hideLoading()
       util.showToast('已确认订单，等待买家确认付款', 'success')
       this.loadOrderDetail(orderId)
@@ -497,6 +547,17 @@ Page({
         console.warn('订单完成信用奖励失败', creditErr)
       }
 
+      // 通知买家
+      const normId4 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+      notice.notifyOrderEvent(
+        normId4(this.data.order.buyerId),
+        notice.NOTICE_TYPE.SELLER_RECEIVED,
+        '交易已完成',
+        '卖家已确认收款，交易完成，感谢使用',
+        orderId,
+        itemId
+      ).catch(() => {})
+
       util.hideLoading()
       util.showToast('已确认收款', 'success')
       this.loadOrderDetail(orderId)
@@ -523,6 +584,21 @@ Page({
         itemRow.set('status', 'ON_SALE')
         await itemRow.save()
       }
+      // 通知对方
+      const u2 = auth.getUserInfo()
+      const normId5 = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+      const bId = normId5(order.buyerId)
+      const sId = normId5(order.sellerId)
+      const notifyId = (u2 && u2.objectId === bId) ? sId : bId
+      notice.notifyOrderEvent(
+        notifyId,
+        notice.NOTICE_TYPE.ORDER_CANCELLED,
+        '订单已取消',
+        '对方取消了订单，商品已重新上架',
+        order.objectId,
+        order.itemId
+      ).catch(() => {})
+
       util.hideLoading()
       util.showToast('订单已取消')
       this.loadOrderDetail(order.objectId)
@@ -554,6 +630,18 @@ Page({
         deliveryCodeVerified: false
       }))
       await orderRow.save()
+
+      // 通知发布者（errand 订单中 buyerId = 发布者）
+      const normEA = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+      notice.notifyOrderEvent(
+        normEA(this.data.order.buyerId),
+        notice.NOTICE_TYPE.ERRAND_CONFIRMED,
+        '骑手已确认接单',
+        `骑手已确认「${this.data.order.itemTitle || '跑腿任务'}」，任务正式开始`,
+        orderId,
+        this.data.order.itemId || ''
+      ).catch(() => {})
+
       util.hideLoading()
       util.showToast('已确认接单，订单已锁定', 'success')
       this.loadOrderDetail(orderId)
@@ -586,7 +674,32 @@ Page({
       util.showToast('无法找到关联任务')
       return
     }
-    chat.openChatForItem(itemId, { tip: '完成校园认证后可进入群聊' })
+    // 跑腿订单的 itemId 指向 Errand 表
+    const postType = this.data.order && this.data.order.postType
+    chat.openChatForItem(itemId, {
+      tip: '完成校园认证后可进入群聊',
+      src: postType === 'errand' ? 'errand' : 'item'
+    })
+  },
+
+  onChat() {
+    const itemId = this.data.order && this.data.order.itemId
+    if (!itemId) {
+      util.showToast('无法找到关联商品')
+      return
+    }
+    chat.openChatForItem(itemId, { tip: '完成校园认证后可联系对方' })
+  },
+
+  onLinkedChat() {
+    const { linkedChatRoomId, linkedChatItemId } = this.data
+    if (!linkedChatRoomId || !linkedChatItemId) {
+      util.showToast('群聊不存在')
+      return
+    }
+    wx.navigateTo({
+      url: `/pages/chatRoom/chatRoom?roomId=${linkedChatRoomId}&itemId=${linkedChatItemId}`
+    })
   },
 
   async onCancelAccept() {
@@ -603,13 +716,24 @@ Page({
       orderRow.set('status', 'CANCELLED')
       await orderRow.save()
 
-      // 恢复 Item 状态：移除骑手绑定，重新上架
+      // 恢复 Errand 状态：移除骑手绑定，重新开放接单
       if (itemId) {
-        const itemRow = await Bmob.Query('Item').get(itemId)
+        const itemRow = await Bmob.Query('Errand').get(itemId)
         itemRow.set('status', 'ON_SALE')
         itemRow.set('runnerId', '')
         await itemRow.save()
       }
+
+      // 通知发布者（errand 订单中 buyerId = 发布者）
+      const normCA = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+      notice.notifyOrderEvent(
+        normCA(order.buyerId),
+        notice.NOTICE_TYPE.ERRAND_CANCEL_ACCEPT,
+        '骑手已取消接单',
+        `骑手取消了「${order.itemTitle || '跑腿任务'}」的接单，任务已重新开放`,
+        orderId,
+        itemId || ''
+      ).catch(() => {})
 
       util.hideLoading()
       util.showToast('已取消接单，任务重新开放')
@@ -671,7 +795,7 @@ Page({
         row.set('status', 'COMPLETED')
         await row.save()
         if (this.data.order.itemId) {
-          const itemRow = await Bmob.Query('Item').get(this.data.order.itemId)
+          const itemRow = await Bmob.Query('Errand').get(this.data.order.itemId)
           itemRow.set('status', 'SOLD_OUT')
           await itemRow.save()
         }
@@ -680,6 +804,16 @@ Page({
         } catch (creditErr) {
           console.warn('信用结算失败', creditErr)
         }
+        // 通知发布者（errand 订单中 buyerId = 发布者）
+        const normDel = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+        notice.notifyOrderEvent(
+          normDel(this.data.order.buyerId),
+          notice.NOTICE_TYPE.ERRAND_COMPLETED,
+          '跑腿任务已完成',
+          `「${this.data.order.itemTitle || '跑腿任务'}」已送达，任务完成`,
+          orderId,
+          this.data.order.itemId || ''
+        ).catch(() => {})
         util.hideLoading()
         util.showToast('收件码正确，跑腿任务完成！', 'success')
       }
@@ -733,8 +867,8 @@ Page({
       // 存储禁止接单的用户（买卖双方不能接自己的关联跑腿）
       const blockedTag = `\n[blockedUsers:${orderBuyerId},${orderSellerId}]`
 
-      // 创建跑腿 Item（ON_SALE，骑手可见）
-      const errandRow = Bmob.Query('Item')
+      // 创建跑腿子任务（ON_SALE，骑手可见，存入 Errand 表）
+      const errandRow = Bmob.Query('Errand')
       errandRow.set('sellerId', u.objectId)
       errandRow.set('postType', publish.POST_TYPE.ERRAND)
       errandRow.set('status', 'ON_SALE')
@@ -746,8 +880,29 @@ Page({
       errandRow.set('images', '[]')
       const savedItem = await errandRow.save()
 
-      // 将 errandItemId 和付款方写入商品订单 meta
-      await this._updateMeta(order.objectId, { errandItemId: savedItem.objectId, errandPayer })
+      // 创建三方配送群聊（买家+卖家，骑手接单后加入）
+      const linkedRoomId = await chat.createLinkedErrandRoom(
+        savedItem.objectId,
+        order.itemTitle || '交易商品',
+        [orderBuyerId, orderSellerId]
+      )
+
+      // 将 errandItemId、付款方、群聊 roomId 写入商品订单 meta
+      await this._updateMeta(order.objectId, {
+        errandItemId: savedItem.objectId,
+        errandPayer,
+        linkedChatRoomId: linkedRoomId || ''
+      })
+
+      // 通知对方已发起跑腿
+      notice.notifyOrderEvent(
+        isInitiatedByBuyer ? orderSellerId : orderBuyerId,
+        notice.NOTICE_TYPE.ERRAND_REQUESTED,
+        '跑腿申请已发起',
+        `${payerLabel}已为该交易申请跑腿配送，骑手接单后负责取件和送达`,
+        order.objectId,
+        order.itemId
+      ).catch(() => {})
 
       util.hideLoading()
       util.showToast('跑腿子任务已创建，等待骑手接单', 'success')
@@ -767,9 +922,9 @@ Page({
       const order = this.data.order
       const errandItemId = this._parseMeta(order.errandMeta).errandItemId || ''
 
-      // 下架跑腿 Item
+      // 下架关联跑腿（Errand 表）
       if (errandItemId) {
-        const itemRow = await Bmob.Query('Item').get(errandItemId)
+        const itemRow = await Bmob.Query('Errand').get(errandItemId)
         itemRow.set('status', 'OFFLINE')
         await itemRow.save()
 

@@ -86,7 +86,8 @@ Page({
     if (reset) this.setData({ loading: true, page: 0 })
     else this.setData({ loadingMore: true })
     try {
-      const q = Bmob.Query('Item')
+      const publishTab = this.data.activePublishTab
+      const q = Bmob.Query(publishTab === 'errand' ? 'Errand' : 'Item')
       q.equalTo('sellerId', '==', u.objectId)
       const statusTab = this.data.activeStatus
       if (statusTab !== 'all') {
@@ -96,18 +97,18 @@ Page({
       q.limit(10)
       q.skip(page * 10)
       let list = (await q.find()).filter((r) => r.status !== 'DELETED_SOFT')
-      const publishTab = this.data.activePublishTab
       if (publishTab === 'goods') {
         list = (list || []).filter(
           (r) => !r.postType || r.postType === publish.POST_TYPE.GOODS
         )
-      } else {
-        list = (list || []).filter((r) => r.postType === publish.POST_TYPE.ERRAND)
       }
+      // errand 标签页直接查 Errand 表，无需再过滤 postType
       const items = []
       for (let i = 0; i < (list || []).length; i++) {
         const row = list[i]
-        const postType = row.postType || publish.POST_TYPE.GOODS
+        const postType = publishTab === 'errand'
+          ? publish.POST_TYPE.ERRAND
+          : (row.postType || publish.POST_TYPE.GOODS)
         const isErrand = postType === publish.POST_TYPE.ERRAND
         let coverImage = row.coverImage || ''
         if (cloudImage.isCloudFileId(coverImage)) {
@@ -130,7 +131,7 @@ Page({
           statusLabel: needsRectify ? '已取消 · 待整改' : meta.label,
           statusClass: meta.cls,
           rectifyRequired: needsRectify,
-          rectifyReason: row.rectifyReason || row.offlineReason || '',
+          rectifyReason: row.rectifyReason || '',
           routeHint,
           canEdit: isErrand ? status === 'ON_SALE' : status === 'ON_SALE',
           createdAtText: row.createdAt ? util.formatTime(row.createdAt) : ''
@@ -152,7 +153,11 @@ Page({
 
   onOpenDetail(e) {
     const id = e.currentTarget.dataset.id
-    wx.navigateTo({ url: `/pages/itemDetail/itemDetail?id=${id}` })
+    const isErrand = this.data.activePublishTab === 'errand'
+    const url = isErrand
+      ? `/pages/itemDetail/itemDetail?id=${id}&src=errand`
+      : `/pages/itemDetail/itemDetail?id=${id}`
+    wx.navigateTo({ url })
   },
 
   onEdit(e) {
@@ -173,7 +178,8 @@ Page({
   },
 
   async setItemStatus(id, status, extra = {}) {
-    const row = await Bmob.Query('Item').get(id)
+    const isErrand = this.data.activePublishTab === 'errand'
+    const row = await Bmob.Query(isErrand ? 'Errand' : 'Item').get(id)
     row.set('status', status)
     Object.keys(extra).forEach((key) => row.set(key, extra[key]))
     await row.save()
@@ -219,11 +225,11 @@ Page({
     const isErrand = item && item.isErrand
     try {
       util.showLoading('处理中...')
+      const isErrand = this.data.activePublishTab === 'errand'
       await this.setItemStatus(id, 'ON_SALE', {
         rectifyRequired: false,
         rectifyReason: '',
-        offlineReason: '',
-        offlineSource: ''
+        ...(isErrand ? {} : { offlineReason: '', offlineSource: '' })
       })
       util.hideLoading()
       util.showToast(isErrand ? '已重新发布' : '已重新上架')

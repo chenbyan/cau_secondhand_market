@@ -33,6 +33,12 @@ Page({
     this.initRoom()
   },
 
+  onShow() {
+    if (this.data.roomId) {
+      chat.markRoomRead(this.data.roomId)
+    }
+  },
+
   async initRoom() {
     const { roomId, itemId } = this.data
     let title = '群聊'
@@ -81,6 +87,7 @@ Page({
       messages: mapped,
       scrollInto: mapped.length ? `msg-${mapped.length - 1}` : ''
     })
+    chat.markRoomRead(this.data.roomId)
   },
 
   onInput(e) {

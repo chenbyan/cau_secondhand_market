@@ -7,25 +7,16 @@
 
   <block wx:else>
     <view class="msg-tabs flex-row">
-      <view
-        class="msg-tab {{activeTab === 'all' ? 'active' : ''}}"
-        data-tab="all"
-        bindtap="onSwitchTab"
-      >全部</view>
-      <view
-        class="msg-tab {{activeTab === 'notice' ? 'active' : ''}}"
-        data-tab="notice"
-        bindtap="onSwitchTab"
-      >
+      <view class="msg-tab {{activeTab === 'all' ? 'active' : ''}}" data-tab="all" bindtap="onSwitchTab">全部</view>
+      <view class="msg-tab {{activeTab === 'notice' ? 'active' : ''}}" data-tab="notice" bindtap="onSwitchTab">
         通知
-        <text wx:if="{{unreadCount > 0}}" class="tab-badge">{{unreadCount > 99 ? '99+' : unreadCount}}</text>
+        <text wx:if="{{noticeUnreadCount > 0}}" class="tab-badge">{{noticeUnreadCount > 99 ? '99+' : noticeUnreadCount}}</text>
       </view>
-      <view
-        class="msg-tab {{activeTab === 'chat' ? 'active' : ''}}"
-        data-tab="chat"
-        bindtap="onSwitchTab"
-      >聊天</view>
-      <view wx:if="{{unreadCount > 0}}" class="mark-read" bindtap="onMarkAllRead">全部已读</view>
+      <view class="msg-tab {{activeTab === 'chat' ? 'active' : ''}}" data-tab="chat" bindtap="onSwitchTab">
+        聊天
+        <text wx:if="{{chatUnreadCount > 0}}" class="tab-badge">{{chatUnreadCount > 99 ? '99+' : chatUnreadCount}}</text>
+      </view>
+      <view wx:if="{{totalUnread > 0}}" class="mark-read" bindtap="onMarkAllRead">全部已读</view>
     </view>
 
     <view wx:if="{{loading}}" class="loading-wrap flex-center">
@@ -33,62 +24,83 @@
     </view>
 
     <block wx:else>
-      <!-- 通知 -->
+      <!-- 通知区 -->
       <view wx:if="{{activeTab === 'all' || activeTab === 'notice'}}" class="section">
-        <view wx:if="{{activeTab === 'all'}}" class="section-head">系统通知</view>
-        <view wx:if="{{!notices.length}}" class="section-empty text-muted">暂无通知</view>
+        <view wx:if="{{activeTab === 'all'}}" class="section-head">通知</view>
+
+        <!-- 系统管理员通知（合并为一个框） -->
         <view
-          wx:for="{{notices}}"
-          wx:for-index="noticeIdx"
-          wx:key="objectId"
-          class="notice-card card-flat flex-row {{item.read ? '' : 'unread'}}"
-          hover-class="notice-card-hover"
-          data-index="{{noticeIdx}}"
-          bindtap="onOpenNotice"
+          class="msg-row card-flat flex-row {{sysGroup.unread > 0 ? 'unread' : ''}}"
+          hover-class="msg-row-hover"
+          bindtap="onOpenSysNotices"
         >
-          <view class="notice-icon flex-center">!</view>
-          <view class="notice-body flex-col">
+          <view class="row-avatar sys-avatar flex-center">!</view>
+          <view class="row-body flex-col">
             <view class="flex-row flex-between">
-              <text class="notice-title">{{item.title}}</text>
-              <text class="room-time">{{item.timeText}}</text>
+              <text class="row-title">系统通知</text>
+              <text class="row-time">{{sysGroup.timeText}}</text>
             </view>
-            <text class="notice-content">{{item.content}}</text>
-            <text class="room-tag">{{item.typeLabel}}</text>
+            <text class="row-preview">{{sysGroup.lastTitle || (sysGroup.count > 0 ? sysGroup.lastContent : '暂无系统通知')}}</text>
+            <text class="row-tag">举报 · 申诉 · 信用 · 系统消息</text>
           </view>
-          <view wx:if="{{!item.read}}" class="dot"></view>
+          <view wx:if="{{sysGroup.unread > 0}}" class="badge">{{sysGroup.unread > 99 ? '99+' : sysGroup.unread}}</view>
         </view>
+
+        <!-- 订单状态通知（每个订单一个框） -->
+        <view
+          wx:for="{{orderGroups}}"
+          wx:key="orderId"
+          class="msg-row card-flat flex-row {{item.unread > 0 ? 'unread' : ''}}"
+          hover-class="msg-row-hover"
+          data-order-id="{{item.orderId}}"
+          data-index="{{index}}"
+          bindtap="onOpenOrderGroup"
+        >
+          <view class="row-avatar order-avatar flex-center">订</view>
+          <view class="row-body flex-col">
+            <view class="flex-row flex-between">
+              <text class="row-title">订单通知</text>
+              <text class="row-time">{{item.timeText}}</text>
+            </view>
+            <text class="row-preview">{{item.lastTitle || item.lastContent}}</text>
+            <text class="row-tag">点击查看订单详情</text>
+          </view>
+          <view wx:if="{{item.unread > 0}}" class="badge">{{item.unread > 99 ? '99+' : item.unread}}</view>
+        </view>
+
+        <view wx:if="{{sysGroup.count === 0 && !orderGroups.length}}" class="section-empty text-muted">暂无通知</view>
       </view>
 
-      <!-- 聊天 -->
+      <!-- 聊天区 -->
       <view wx:if="{{activeTab === 'all' || activeTab === 'chat'}}" class="section">
-        <view wx:if="{{activeTab === 'all'}}" class="section-head">聊天会话</view>
+        <view wx:if="{{activeTab === 'all'}}" class="section-head">聊天</view>
         <view wx:if="{{!rooms.length}}" class="section-empty text-muted">暂无会话</view>
-        <view wx:else class="room-list">
-          <view
-            wx:for="{{rooms}}"
-            wx:key="objectId"
-            class="room-card card-flat flex-row"
-            data-room-id="{{item.objectId}}"
-            data-item-id="{{item.itemId}}"
-            bindtap="onOpenRoom"
-          >
-            <view class="room-avatar flex-center">{{item.avatarText}}</view>
-            <view class="room-body flex-col">
-              <view class="flex-row flex-between">
-                <text class="room-title">{{item.title}}</text>
-                <text class="room-time">{{item.timeText}}</text>
-              </view>
-              <text class="room-preview">{{item.lastMsg || '点击进入群聊'}}</text>
-              <text class="room-tag">{{item.tagText}}</text>
+        <view
+          wx:for="{{rooms}}"
+          wx:key="objectId"
+          class="msg-row card-flat flex-row"
+          hover-class="msg-row-hover"
+          data-room-id="{{item.objectId}}"
+          data-item-id="{{item.itemId}}"
+          bindtap="onOpenRoom"
+        >
+          <view class="row-avatar room-avatar flex-center">{{item.avatarText}}</view>
+          <view class="row-body flex-col">
+            <view class="flex-row flex-between">
+              <text class="row-title">{{item.title}}</text>
+              <text class="row-time">{{item.timeText}}</text>
             </view>
+            <text class="row-preview">{{item.lastMsg || '点击进入群聊'}}</text>
+            <text class="row-tag">{{item.tagText}}</text>
           </view>
+          <view wx:if="{{item.unread > 0}}" class="badge">{{item.unread > 99 ? '99+' : item.unread}}</view>
         </view>
       </view>
 
-      <view wx:if="{{activeTab === 'all' && !notices.length && !rooms.length}}" class="empty-state flex-col flex-center">
+      <view wx:if="{{activeTab === 'all' && sysGroup.count === 0 && !orderGroups.length && !rooms.length}}" class="empty-state flex-col flex-center">
         <text class="empty-illus">📭</text>
         <text class="empty-title">暂无消息</text>
-        <text class="text-muted text-center">举报/申诉动态与聊天会话将显示在这里</text>
+        <text class="text-muted text-center">订单通知与聊天会话将显示在这里</text>
       </view>
     </block>
   </block>

@@ -343,15 +343,11 @@ const getRunnerContact = async (row) => {
   return null
 }
 
-/** 接单后写入 Item（供订单/接单模块调用） */
+/** 接单后写入 Item（只更新 status 和 runnerId，联系方式从 User 表实时查询） */
 const bindRunnerToItem = async (itemId, runnerUserId) => {
-  const u = await Bmob.User.get(runnerUserId)
   const row = await Bmob.Query('Item').get(itemId)
   row.set('status', 'IN_TRADING')
   row.set('runnerId', runnerUserId)
-  row.set('runnerPhone', u.phone || '')
-  row.set('runnerNickName', u.nickName || '')
-  if (u.wechatId) row.set('runnerWechatId', u.wechatId)
   await row.save()
   return row
 }
@@ -557,6 +553,7 @@ const fetchItems = async (options = {}) => {
     for (let i = 0; i < raw.length; i++) {
       const row = raw[i]
       if (
+        !isErrand(row) &&    // 跑腿已迁移至 Errand 表，Item 表中跳过
         matchesType(row, type) &&
         matchesCategory(row, category) &&
         matchesKeyword(row, keyword)
@@ -635,6 +632,97 @@ const saveItem = async (fields, editId) => {
   return row
 }
 
+// ─── Errand 表专用函数（跑腿已从 Item 表迁移至独立 Errand 表）───
+
+const saveErrand = async (fields, editId) => {
+  const u = auth.getUserInfo()
+  if (!u || !u.objectId) throw new Error('请先登录')
+  let row
+  if (editId) {
+    row = await Bmob.Query('Errand').get(editId)
+    const sellerId = (row.sellerId && row.sellerId.objectId) || row.sellerId
+    if (sellerId !== u.objectId) throw new Error('无权编辑该内容')
+  } else {
+    if (!credit.canPassCreditGate(u.creditScore)) {
+      throw new Error(credit.buildGateMessage('发布', u.creditScore))
+    }
+    row = Bmob.Query('Errand')
+    row.set('sellerId', u.objectId)
+    row.set('status', 'ON_SALE')
+  }
+  const nextFields = { ...fields }
+  if (!nextFields.campus && u.campus) nextFields.campus = u.campus
+  Object.keys(nextFields).forEach((key) => {
+    if (nextFields[key] !== undefined) row.set(key, nextFields[key])
+  })
+  await row.save()
+  return row
+}
+
+const getErrand = async (objectId) => {
+  if (!objectId) return null
+  return Bmob.Query('Errand').get(objectId)
+}
+
+const bindRunnerToErrand = async (errandId, runnerUserId) => {
+  const row = await Bmob.Query('Errand').get(errandId)
+  row.set('status', 'IN_TRADING')
+  row.set('runnerId', runnerUserId)
+  await row.save()
+  return row
+}
+
+const fetchErrands = async (options = {}) => {
+  const keyword = options.keyword || ''
+  const category = options.category || 'all'
+  const pageSize = Number(options.pageSize) || PAGE_SIZE
+  const batchSize = Math.max(QUERY_BATCH_SIZE, pageSize * 3)
+  let cursor = Number(options.cursor) || 0
+  let scanned = 0
+  let exhausted = false
+  let filled = false
+  let filledHasMore = false
+  const matched = []
+
+  while (matched.length < pageSize && !exhausted && scanned < MAX_SCAN_BATCHES) {
+    const batchStart = cursor
+    const q = Bmob.Query('Errand')
+    q.equalTo('status', '==', 'ON_SALE')
+    q.order('-createdAt')
+    q.limit(batchSize)
+    q.skip(cursor)
+    const raw = (await q.find()) || []
+    scanned += 1
+    if (raw.length < batchSize) exhausted = true
+    let consumed = raw.length
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i]
+      const cat = getErrandCategory(row)
+      if (
+        matchesKeyword(row, keyword) &&
+        (category === 'all' || cat === category || row.errandCategory === category)
+      ) {
+        matched.push(row)
+        if (matched.length >= pageSize) {
+          consumed = i + 1
+          filled = true
+          filledHasMore = consumed < raw.length || raw.length === batchSize
+          break
+        }
+      }
+    }
+    cursor = batchStart + consumed
+    if (filled) break
+  }
+
+  const ranked = await credit.attachSellerCreditScores(matched)
+  return {
+    list: await mapSearchItems(ranked.map((r) => ({ ...r, postType: POST_TYPE.ERRAND }))),
+    nextCursor: cursor,
+    hasMore: filled ? filledHasMore : !exhausted
+  }
+}
+
 module.exports = {
   POST_TYPE,
   GOODS_CATEGORIES,
@@ -664,5 +752,9 @@ module.exports = {
   stripBlockedUsersFromDescription,
   getSellerId,
   getRunnerContact,
-  bindRunnerToItem
+  bindRunnerToItem,
+  saveErrand,
+  getErrand,
+  bindRunnerToErrand,
+  fetchErrands
 }

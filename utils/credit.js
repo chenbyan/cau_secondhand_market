@@ -4,15 +4,21 @@
 const Bmob = require('./bmob.js')
 const auth = require('./auth.js')
 const sysConfig = require('./sysConfig.js')
+const notice = require('./notice.js')
 
 const DEFAULT_SCORE = 100
 const MIN_SCORE = 0
+const MAX_SCORE = 500
+const FREEZE_DURATION_DAYS = 7
 
 const SOURCE = {
   ORDER_COMPLETE: 'order_complete',
   ORDER_TIMEOUT: 'order_timeout',
   ORDER_CANCEL: 'order_cancel',
   ORDER_REVIEW: 'order_review',
+  SELLER_NO_CONFIRM: 'seller_no_confirm',
+  SELLER_NO_RECEIPT: 'seller_no_receipt',
+  ERRAND_LATE: 'errand_late',
   ERRAND_BREACH: 'errand_breach',
   FAKE_INFO: 'fake_info',
   PUBLISH_VIOLATION: 'publish_violation',
@@ -20,12 +26,11 @@ const SOURCE = {
   DISPUTE: 'dispute'
 }
 
+// 0–150 正常 · 150–350 良好 · 350–500 极好
 const LEVELS = [
-  { min: 90, label: '信用优秀', tone: 'excellent' },
-  { min: 80, label: '信用良好', tone: 'good' },
-  { min: 60, label: '信用正常', tone: 'normal' },
-  { min: 40, label: '信用偏低', tone: 'warning' },
-  { min: 0, label: '信用受限', tone: 'danger' }
+  { min: 350, label: '信用极好', tone: 'excellent' },
+  { min: 150, label: '信用良好', tone: 'good' },
+  { min: 0,   label: '信用正常', tone: 'normal' }
 ]
 
 function toNumber(value, fallback) {
@@ -34,7 +39,7 @@ function toNumber(value, fallback) {
 }
 
 function normalizeScore(value) {
-  return Math.max(MIN_SCORE, toNumber(value, DEFAULT_SCORE))
+  return Math.min(MAX_SCORE, Math.max(MIN_SCORE, toNumber(value, DEFAULT_SCORE)))
 }
 
 function getLevel(score) {
@@ -134,7 +139,7 @@ async function applyDelta(userId, delta, options = {}) {
 
   const userRow = await Bmob.User.get(userId)
   const beforeScore = normalizeScore(userRow.creditScore)
-  const afterScore = Math.max(MIN_SCORE, beforeScore + numericDelta)
+  const afterScore = normalizeScore(beforeScore + numericDelta)
   const actualDelta = afterScore - beforeScore
 
   userRow.set('creditScore', afterScore)
@@ -149,6 +154,11 @@ async function applyDelta(userId, delta, options = {}) {
   if (shouldFreeze) {
     userRow.set('status', 'frozen')
     userRow.set('creditFrozen', true)
+    const days = sysConfig.getCreditFreezeDurationDays()
+    userRow.set('frozenUntil', {
+      __type: 'Date',
+      iso: new Date(Date.now() + days * 86400000).toISOString()
+    })
   }
 
   await userRow.save()
@@ -168,6 +178,14 @@ async function applyDelta(userId, delta, options = {}) {
   })
 
   await refreshCurrentUser(userId)
+
+  // 通知用户信用分发生了变化
+  notice.createNotice({
+    userId,
+    type: notice.NOTICE_TYPE.CREDIT_CHANGED,
+    title: actualDelta >= 0 ? `信用分 +${actualDelta}` : `信用分 ${actualDelta}`,
+    content: `${options.reason || '信用分变更'} · 当前信用分：${afterScore}${shouldFreeze ? ' · 账号已冻结' : ''}`
+  }).catch(() => {})
 
   return {
     userId,
@@ -315,6 +333,68 @@ async function penalizeDisputeLiability(userId, options = {}) {
   })
 }
 
+// 评价奖惩：revieweeId 为被评价方，rating 1-5，sourceRef 通常为 orderId
+async function rewardReview(revieweeId, rating, sourceRef) {
+  if (!revieweeId) return { skipped: true }
+  const delta = sysConfig.getCreditReviewDelta(rating)
+  if (!delta) return { skipped: true, reason: 'neutral_rating' }
+  const sign = delta > 0 ? '+' : ''
+  return applyDelta(revieweeId, delta, {
+    source: SOURCE.ORDER_REVIEW,
+    sourceRef: sourceRef ? `${sourceRef}:review_${rating}star` : '',
+    reason: `收到 ${rating} 星评价 (${sign}${delta}分)`
+  })
+}
+
+// 卖家 24 小时未确认订单，系统自动确认时扣 1 分
+async function penalizeSellerNoConfirm(order) {
+  if (!order || !order.objectId) return { skipped: true }
+  const delta = sysConfig.getCreditSellerNoConfirmPenalty()
+  if (!delta || !order.sellerId) return { skipped: true }
+  return applyDelta(order.sellerId, delta, {
+    source: SOURCE.SELLER_NO_CONFIRM,
+    sourceRef: `${order.objectId}:seller_no_confirm`,
+    orderId: order.objectId,
+    itemId: order.itemId || '',
+    reason: `超时24小时未确认订单，系统自动确认`
+  })
+}
+
+// 买家确认付款后卖家超 1 小时未确认收款扣 2 分
+async function penalizeSellerReceiptTimeout(order) {
+  if (!order || !order.objectId) return { skipped: true }
+  const delta = sysConfig.getCreditSellerReceiptTimeoutPenalty()
+  if (!delta || !order.sellerId) return { skipped: true }
+  return applyDelta(order.sellerId, delta, {
+    source: SOURCE.SELLER_NO_RECEIPT,
+    sourceRef: `${order.objectId}:seller_no_receipt`,
+    orderId: order.objectId,
+    itemId: order.itemId || '',
+    reason: `买家确认付款后超1小时卖家未确认收款`
+  })
+}
+
+// 骑手逾期送达：1-5 分钟不扣，>5 分钟 -1，>60 分钟 -3
+async function penalizeErrandLate(order, minutesLate) {
+  if (!order || !order.objectId) return { skipped: true }
+  const minutes = Number(minutesLate) || 0
+  if (minutes <= 5) return { skipped: true, reason: 'within_tolerance' }
+  const delta = minutes > 60
+    ? sysConfig.getCreditErrandLate1hPenalty()
+    : sysConfig.getCreditErrandLate5minPenalty()
+  if (!delta) return { skipped: true }
+  // 跑腿订单中 sellerId = 骑手
+  const runnerId = (typeof order.sellerId === 'object' ? order.sellerId.objectId : order.sellerId) || ''
+  if (!runnerId) return { skipped: true, reason: 'no_runner' }
+  return applyDelta(runnerId, delta, {
+    source: SOURCE.ERRAND_LATE,
+    sourceRef: `${order.objectId}:errand_late:${runnerId}`,
+    orderId: order.objectId,
+    itemId: order.itemId || '',
+    reason: `跑腿超时 ${minutes} 分钟送达`
+  })
+}
+
 async function getUserCreditProfile(userId) {
   if (!userId) return null
   try {
@@ -373,6 +453,7 @@ async function attachSellerCreditScores(rows) {
 module.exports = {
   DEFAULT_SCORE,
   MIN_SCORE,
+  MAX_SCORE,
   SOURCE,
   LEVELS,
   normalizeScore,
@@ -384,9 +465,13 @@ module.exports = {
   buildGateMessage,
   applyDelta,
   rewardOrderComplete,
+  rewardReview,
   penalizeSellerTimeout,
+  penalizeSellerNoConfirm,
+  penalizeSellerReceiptTimeout,
   penalizeBuyerCancel,
   penalizeErrandBreach,
+  penalizeErrandLate,
   penalizePublishViolation,
   penalizeFakeInfo,
   penalizeDisputeLiability,

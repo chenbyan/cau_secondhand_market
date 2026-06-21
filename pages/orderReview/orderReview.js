@@ -2,12 +2,14 @@ const Bmob = require('../../utils/bmob.js')
 const auth = require('../../utils/auth.js')
 const util = require('../../utils/util.js')
 const review = require('../../utils/review.js')
+const notice = require('../../utils/notice.js')
 
 Page({
   data: {
     orderId: '',
     order: null,
     targetLabel: '对方',
+    reviewerRole: '',
     rating: 5,
     content: '',
     ratingOptions: [1, 2, 3, 4, 5],
@@ -40,10 +42,12 @@ Page({
       const order = await Bmob.Query('Order').get(orderId)
       const u = auth.getUserInfo()
       const state = await review.getReviewState(order, u && u.objectId)
-      const targetLabel = state.reviewerRole === 'buyer' ? '卖家' : '买家'
+      const reviewerRole = state.reviewerRole || ''
+      const targetLabel = reviewerRole === 'buyer' ? '卖家' : '买家'
       this.setData({
         order,
         targetLabel,
+        reviewerRole,
         canReview: !!state.canReview,
         loading: false
       })
@@ -76,6 +80,20 @@ Page({
       )
       util.showToast(res.message || (res.success ? '评价已提交' : '提交失败'), res.success ? 'success' : 'none')
       if (res.success) {
+        // 通知对方已收到评价
+        const order = this.data.order
+        const normId = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+        const isBuyerReviewing = this.data.reviewerRole === 'buyer'
+        const notifyId = isBuyerReviewing ? normId(order.sellerId) : normId(order.buyerId)
+        const ratingText = `${this.data.rating} 分`
+        notice.notifyOrderEvent(
+          notifyId,
+          notice.NOTICE_TYPE.ORDER_REVIEWED,
+          '对方已对您评价',
+          `对方给了您 ${ratingText} 的评价，点击查看订单`,
+          this.data.orderId,
+          order.itemId || ''
+        ).catch(() => {})
         setTimeout(() => wx.navigateBack(), 700)
       }
     } catch (e) {

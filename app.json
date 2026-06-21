@@ -19,6 +19,7 @@
     "pages/itemPublish/itemPublish",
     "pages/errandPublish/errandPublish",
     "pages/feedback/feedback",
+    "pages/notices/notices",
     "pages/aiChat/aiChat"
   ],
   "tabBar": {

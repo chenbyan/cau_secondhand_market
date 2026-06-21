@@ -156,13 +156,21 @@ Page({
       this.setData({ loadingMore: true })
     }
     try {
-      const res = await itemQuery.fetchItems({
-        type: this.data.activeType,
-        category: this.data.activeCategory,
-        keyword: this.data.keyword,
-        cursor: reset ? 0 : this.data.cursor,
-        pageSize: this.data.pageSize
-      })
+      const isErrandTab = this.data.activeType === itemQuery.TYPE_PARTTIME
+      const res = isErrandTab
+        ? await itemQuery.fetchErrands({
+            category: this.data.activeCategory,
+            keyword: this.data.keyword,
+            cursor: reset ? 0 : this.data.cursor,
+            pageSize: this.data.pageSize
+          })
+        : await itemQuery.fetchItems({
+            type: this.data.activeType,
+            category: this.data.activeCategory,
+            keyword: this.data.keyword,
+            cursor: reset ? 0 : this.data.cursor,
+            pageSize: this.data.pageSize
+          })
       const list = reset ? res.list : this.data.list.concat(res.list)
       this.setData({
         list,
@@ -192,6 +200,10 @@ Page({
   onOpenDetail(e) {
     const id = e.currentTarget.dataset.id
     if (!id) return
-    wx.navigateTo({ url: `/pages/itemDetail/itemDetail?id=${id}` })
+    const isErrand = this.data.activeType === itemQuery.TYPE_PARTTIME
+    const url = isErrand
+      ? `/pages/itemDetail/itemDetail?id=${id}&src=errand`
+      : `/pages/itemDetail/itemDetail?id=${id}`
+    wx.navigateTo({ url })
   }
 })

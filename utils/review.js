@@ -3,6 +3,7 @@
  */
 const Bmob = require('./bmob.js')
 const auth = require('./auth.js')
+const credit = require('./credit.js')
 
 const ROLE_LABEL = {
   buyer: '买家',
@@ -136,6 +137,11 @@ async function submitOrderReview(orderId, rating, content) {
   } catch (e) {
     console.warn('订单评价状态回写失败', e)
   }
+
+  // 根据星级给被评价方加/扣分
+  credit.rewardReview(target.revieweeId, clampRating(rating), orderId).catch((e) => {
+    console.warn('评价信用分结算失败', e)
+  })
 
   return { success: true, message: '评价已提交' }
 }

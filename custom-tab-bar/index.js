@@ -18,15 +18,6 @@ Component({
     }
   },
 
-  pageLifetimes: {
-    show() {
-      const app = getApp()
-      if (app && app.globalData) {
-        this.setData({ messageBadge: app.globalData.unreadNoticeCount || 0 })
-      }
-    }
-  },
-
   methods: {
     switchTab(e) {
       const index = e.currentTarget.dataset.index

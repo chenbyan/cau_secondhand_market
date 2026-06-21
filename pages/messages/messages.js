@@ -9,21 +9,27 @@ Page({
     loggedIn: false,
     loading: true,
     activeTab: 'all',
-    notices: [],
+    sysGroup: { unread: 0, lastTitle: '', lastContent: '', timeText: '', count: 0 },
+    orderGroups: [],
     rooms: [],
-    unreadCount: 0
+    totalUnread: 0,
+    noticeUnreadCount: 0,
+    chatUnreadCount: 0
   },
 
   onShow() {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 1 })
+      const app = getApp()
+      this.getTabBar().setData({
+        selected: 1,
+        messageBadge: (app && app.globalData.unreadNoticeCount) || 0
+      })
     }
     this.loadAll()
   },
 
   onSwitchTab(e) {
-    const tab = e.currentTarget.dataset.tab
-    this.setData({ activeTab: tab })
+    this.setData({ activeTab: e.currentTarget.dataset.tab })
   },
 
   goLogin() {
@@ -34,78 +40,86 @@ Page({
     const loggedIn = auth.checkLoginStatus()
     this.setData({ loggedIn })
     if (!loggedIn) {
-      this.setData({ loading: false, notices: [], rooms: [], unreadCount: 0 })
+      this.setData({ loading: false, sysGroup: { unread: 0, count: 0 }, orderGroups: [], rooms: [], totalUnread: 0 })
       return
     }
     this.setData({ loading: true })
     try {
       const u = auth.getUserInfo()
-      const [notices, raw, unreadCount] = await Promise.all([
-        notice.listNotices(50),
-        chat.listRoomsForUser(u.objectId),
-        notice.countUnread()
+      const [grouped, rawRooms] = await Promise.all([
+        notice.listNoticesGrouped(100),
+        chat.listRoomsForUser(u.objectId)
       ])
-      const rooms = raw.map((r) => ({
-        ...r,
-        avatarText: r.postType === publish.POST_TYPE.ERRAND ? '跑' : '聊',
-        timeText: chat.formatTime(
-          typeof r.updatedAt === 'string'
-            ? r.updatedAt
-            : r.updatedAt && r.updatedAt.iso
-        ),
-        tagText:
-          r.postType === publish.POST_TYPE.ERRAND
-            ? '跑腿群聊 · 发布者/骑手'
-            : '交易群聊 · 买家/卖家'
+
+      const { sysGroup, orderGroups } = grouped
+
+      // Add unread counts to rooms
+      const rooms = await Promise.all(rawRooms.map(async (r) => {
+        const updatedAtIso = typeof r.updatedAt === 'string'
+          ? r.updatedAt
+          : (r.updatedAt && r.updatedAt.iso) || ''
+        const unread = await chat.getUnreadCountForRoom(r.objectId, updatedAtIso)
+        return {
+          ...r,
+          unread,
+          avatarText: r.postType === publish.POST_TYPE.ERRAND ? '跑' : '聊',
+          timeText: chat.formatTime(updatedAtIso),
+          tagText: r.postType === publish.POST_TYPE.ERRAND ? '跑腿群聊' : '交易群聊'
+        }
       }))
+
+      const noticeUnreadCount = sysGroup.unread + orderGroups.reduce((s, g) => s + g.unread, 0)
+      const chatUnreadCount = rooms.reduce((s, r) => s + r.unread, 0)
+      const totalUnread = noticeUnreadCount + chatUnreadCount
+
       const app = getApp()
-      app.globalData.unreadNoticeCount = unreadCount
+      app.globalData.chatUnreadCount = chatUnreadCount  // 供 syncTabBadge 叠加
+      app.globalData.unreadNoticeCount = totalUnread    // 通知 + 聊天，驱动 tabBar 红点
       app.refreshTabBadge()
-      this.setData({ notices, rooms, unreadCount, loading: false })
+
+      this.setData({ sysGroup, orderGroups, rooms, totalUnread, noticeUnreadCount, chatUnreadCount, loading: false })
     } catch (e) {
       console.error(e)
-      this.setData({ loading: false, notices: [], rooms: [] })
+      this.setData({ loading: false })
     }
   },
 
-  onOpenNotice(e) {
-    const idx = Number(e.currentTarget.dataset.index)
-    const item = this.data.notices[idx]
-    if (!item) return
-
-    const caseKey = (item.caseKey || '').trim()
-    const url = caseKey
-      ? `/pages/feedback/feedback?mode=case&caseKey=${encodeURIComponent(caseKey)}`
-      : '/pages/feedback/feedback?mode=list'
-
+  onOpenSysNotices() {
     wx.navigateTo({
-      url,
-      fail: (err) => {
-        console.error('navigateTo feedback', err)
-        util.showToast('无法打开案卷，请重试')
-      }
+      url: '/pages/notices/notices',
+      fail: () => util.showToast('暂无法打开')
     })
+  },
 
-    if (item.objectId) {
-      notice.markRead(item.objectId).then(() => {
-        notice.syncTabBadge()
-        setTimeout(() => this.loadAll(), 500)
+  onOpenOrderGroup(e) {
+    const orderId = e.currentTarget.dataset.orderId
+    if (!orderId) return
+    wx.navigateTo({
+      url: `/pages/orderDetail/orderDetail?id=${orderId}`,
+      fail: () => util.showToast('无法打开订单')
+    })
+    // Mark all notices in this group as read
+    const idx = Number(e.currentTarget.dataset.index)
+    const group = this.data.orderGroups[idx]
+    if (group && group.notices) {
+      group.notices.filter(n => !n.read).forEach(n => {
+        notice.markRead(n.objectId).catch(() => {})
       })
+      setTimeout(() => { notice.syncTabBadge(); this.loadAll() }, 500)
     }
   },
 
-  async onMarkAllRead() {
-    await notice.markAllRead()
-    notice.syncTabBadge()
-    this.loadAll()
+  onMarkAllRead() {
+    notice.markAllRead().then(() => {
+      notice.syncTabBadge()
+      this.loadAll()
+    })
   },
 
   onOpenRoom(e) {
     const { roomId, itemId } = e.currentTarget.dataset
-    if (!auth.guardCampusAction({ tip: '完成校园认证后可查看消息' })) {
-      return
-    }
-    if (itemId) {
+    if (!auth.guardCampusAction({ tip: '完成校园认证后可查看消息' })) return
+    if (roomId && itemId) {
       wx.navigateTo({
         url: `/pages/chatRoom/chatRoom?roomId=${roomId}&itemId=${itemId}`
       })

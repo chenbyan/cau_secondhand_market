@@ -8,13 +8,25 @@ function onRequest(request, response, modules) {
   var body = rt.parseBody(request)
   var now = Date.now()
   var autoCompleteMs = Number(body.autoCompleteDays || 7) * 24 * 60 * 60 * 1000
-  var stats = { timeoutCancelled: 0, autoCompleted: 0 }
+  var autoConfirmMs = 24 * 60 * 60 * 1000  // 24h seller-confirm deadline
+  var freezeDurationMs = 7 * 24 * 60 * 60 * 1000
+  var stats = { timeoutCancelled: 0, autoCompleted: 0, autoConfirmed: 0, unfrozen: 0 }
 
+  // 1. Cancel payment-lock-expired IN_TRADING orders
   findOrders('IN_TRADING', function (trading) {
     processList(trading, handleTrading, function () {
+      // 2. Auto-complete long-shipped orders
       findOrders('SHIPPED', function (shipped) {
         processList(shipped, handleShipped, function () {
-          response.end(JSON.stringify({ code: 0, result: stats }))
+          // 3. Auto-confirm PENDING_CONFIRM orders after 24h, penalise seller
+          findOrders('PENDING_CONFIRM', function (pending) {
+            processList(pending, handlePendingConfirm, function () {
+              // 4. Unfreeze accounts whose frozenUntil has passed
+              sweepFrozenUsers(function () {
+                response.end(JSON.stringify({ code: 0, result: stats }))
+              })
+            })
+          })
         })
       })
     })
@@ -76,7 +88,7 @@ function onRequest(request, response, modules) {
       {
         table: 'Item',
         objectId: itemId,
-        data: { status: 'ON_SALE', lockBuyerId: '', lockExpireAt: null }
+        data: { status: 'ON_SALE', lockBuyerId: '', lockBuyers: [], lockExpireAt: null }
       },
       cb
     )
@@ -85,6 +97,61 @@ function onRequest(request, response, modules) {
   function markItemSold(itemId, cb) {
     if (!itemId) return cb()
     db.update({ table: 'Item', objectId: itemId, data: { status: 'SOLD_OUT' } }, cb)
+  }
+
+  function handlePendingConfirm(order, cb) {
+    if (order.frozen || order.autoConfirmed) return cb()
+    var created = parseTime(order.createdAt)
+    if (!created || now - created < autoConfirmMs) return cb()
+    // auto-confirm: move to IN_TRADING
+    db.update(
+      { table: 'Order', objectId: order.objectId, data: { status: 'IN_TRADING', autoConfirmed: true } },
+      function () {
+        penalizeSellerNoConfirm(order, function () {
+          stats.autoConfirmed += 1
+          cb()
+        })
+      }
+    )
+  }
+
+  function penalizeSellerNoConfirm(order, cb) {
+    if (order.noConfirmCreditSet || !order.sellerId) return cb()
+    var delta = Number(body.sellerNoConfirmPenalty || -1)
+    applyDelta(order.sellerId, delta, {
+      source: 'seller_no_confirm',
+      sourceRef: order.objectId + ':seller_no_confirm',
+      reason: '超时24小时未确认订单，系统自动确认',
+      orderId: order.objectId,
+      itemId: order.itemId || ''
+    }, function () {
+      db.update(
+        { table: 'Order', objectId: order.objectId, data: { noConfirmCreditSet: true } },
+        cb
+      )
+    })
+  }
+
+  function sweepFrozenUsers(cb) {
+    db.find(
+      { table: '_User', where: { status: 'frozen', creditFrozen: true }, limit: 100 },
+      function (a, b) {
+        var ret = rt.pickResult(a, b)
+        var users = ret && ret.results ? ret.results : []
+        var i = 0
+        function next() {
+          if (i >= users.length) return cb()
+          var user = users[i++]
+          var until = parseTime(user.frozenUntil)
+          if (!until || until > now) return next()
+          db.update(
+            { table: '_User', objectId: user.objectId, data: { status: 'active', creditFrozen: false } },
+            function () { stats.unfrozen += 1; next() }
+          )
+        }
+        next()
+      }
+    )
   }
 
   function penalizeSellerTimeout(order, cb) {
@@ -114,7 +181,7 @@ function onRequest(request, response, modules) {
 
   function rewardComplete(order, cb) {
     if (order.creditSettled) return cb()
-    var bonus = Number(body.completeBonus || 2)
+    var bonus = Number(body.completeBonus || 1)
     var ids = unique([order.buyerId, order.sellerId])
     var i = 0
     function next() {
@@ -159,12 +226,16 @@ function onRequest(request, response, modules) {
           if (!userRet || !userRet.results || !userRet.results.length) return cb()
           var user = userRet.results[0]
           var beforeScore = normalizeScore(user.creditScore)
-          var afterScore = Math.max(0, beforeScore + Number(delta || 0))
+          var afterScore = normalizeScore(beforeScore + Number(delta || 0))
           var actualDelta = afterScore - beforeScore
           var userData = { creditScore: afterScore }
-          if ((user.status || 'active') === 'active' && afterScore < 40) {
+          if ((user.status || 'active') === 'active' && afterScore < 60) {
             userData.status = 'frozen'
             userData.creditFrozen = true
+            userData.frozenUntil = {
+              __type: 'Date',
+              iso: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            }
           }
           db.update({ table: '_User', objectId: userId, data: userData }, function () {
             db.insert(
@@ -209,7 +280,7 @@ function dateNow() {
 
 function normalizeScore(value) {
   var n = Number(value)
-  return isFinite(n) ? Math.max(0, n) : 100
+  return isFinite(n) ? Math.min(500, Math.max(0, n)) : 100
 }
 
 function unique(list) {

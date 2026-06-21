@@ -1,5 +1,4 @@
 <view class="detail-page page-safe-bottom" wx:if="{{!loading && item}}">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <swiper class="gallery" indicator-dots circular>
     <swiper-item wx:for="{{images}}" wx:key="*this">
       <image class="gallery-img" src="{{item}}" mode="aspectFill" binderror="onGalleryImageError" data-index="{{index}}" />
@@ -17,12 +16,22 @@
     </text>
   </view>
 
-  <!-- 拍下者列表（仅买家自己可见） -->
-  <view wx:if="{{!isOwner && !lockInfo && lockBuyers.length > 0}}" class="lock-buyers-section">
-    <text class="lock-buyers-title">以下用户已拍下：</text>
-    <block wx:for="{{lockBuyers}}" wx:key="buyerId">
-      <text class="lock-buyer-item">{{item.buyerId}}（{{item.lockTime}}）</text>
-    </block>
+  <!-- 卖家：多位买家拍下，选择确认 -->
+  <view class="seller-lock-panel card-flat" wx:if="{{showSellerLockPanel}}">
+    <text class="seller-lock-title">已拍下用户（请选择一位确认）</text>
+    <text class="seller-lock-hint" wx:if="{{sellerConfirmCountdown}}">24小时内未确认将自动确认首位买家，剩余 {{sellerConfirmCountdown}}</text>
+    <view class="seller-lock-item flex-row" wx:for="{{sellerLockBuyers}}" wx:key="buyerId">
+      <view class="seller-lock-meta flex-col">
+        <text class="seller-lock-name">{{item.nickName}}</text>
+        <text class="seller-lock-time text-muted">{{item.lockTimeText}}</text>
+      </view>
+      <button size="mini" class="btn-action" data-buyer-id="{{item.buyerId}}" catchtap="onSellerConfirmBuyer">确认卖给TA</button>
+    </view>
+  </view>
+
+  <!-- 买家：已拍下等待卖家 -->
+  <view wx:if="{{!isOwner && isInLockBuyers && item.status === 'ON_SALE'}}" class="lock-buyers-section">
+    <text class="lock-buyers-title">您已拍下，等待卖家选择确认（24小时内未确认将自动确认首位买家）</text>
   </view>
 
   <view class="detail-body {{showOwnerBar || showItemOwnerBar || showBuyerBar || showErrandAcceptBar || showErrandContactBar ? 'has-bar' : ''}}">
@@ -44,6 +53,7 @@
         <text class="runner-title">接单人</text>
         <view class="info-line">
           <text class="info-k">昵称</text>{{runner.nickName}}
+          <text wx:if="{{runner.creditText}}" class="text-caption credit-caption {{runner.creditTone}}"> · {{runner.creditText}}</text>
         </view>
         <view class="info-line" wx:if="{{runner.phone}}">
           <text class="info-k">电话</text>
@@ -111,11 +121,13 @@
     <view class="action-bar-main flex-row">
       <!-- 未被锁定 -> 可拍下 -->
       <button wx:if="{{canLock}}" class="btn-primary action-btn buy-btn" loading="{{locking}}" bindtap="onLock">拍下</button>
-      <!-- 自己已拍下（等待卖家确认）-> 查看订单 / 取消拍下 -->
-      <button wx:if="{{isLockedByMe}}" class="btn-primary action-btn buy-btn" bindtap="onViewMyOrder">查看订单</button>
-      <button wx:if="{{isLockedByMe}}" class="btn-outline action-btn" bindtap="onCancelLock">取消拍下</button>
-      <!-- 被其他买家锁定 -> 已锁定 -->
-      <button wx:if="{{!canLock && !isLockedByMe}}" class="btn-disabled action-btn" disabled>已锁定</button>
+      <!-- 自己已拍下（等待卖家确认） -->
+      <button wx:if="{{isInLockBuyers && item.status === 'ON_SALE'}}" class="btn-primary action-btn buy-btn" bindtap="onViewMyOrder">查看订单</button>
+      <button wx:if="{{isInLockBuyers && item.status === 'ON_SALE'}}" class="btn-outline action-btn" bindtap="onCancelLock">取消拍下</button>
+      <!-- 卖家确认后，买家付款阶段 -->
+      <button wx:if="{{isLockedByMe && item.status === 'IN_TRADING'}}" class="btn-primary action-btn buy-btn" bindtap="onViewMyOrder">查看订单</button>
+      <!-- 已被其他买家确认 -->
+      <button wx:if="{{!canLock && !isInLockBuyers && !isLockedByMe && item.status === 'IN_TRADING'}}" class="btn-disabled action-btn" disabled>交易中</button>
 
       <!-- 仅在商品仍可购买时显示购物车 -->
       <button
@@ -141,7 +153,7 @@
   <view class="action-bar flex-row errand-bar" wx:if="{{showErrandContactBar && !showErrandAcceptBar}}">
     <button class="btn-primary action-btn main" bindtap="onOpenGroupChat">任务群聊</button>
     <button wx:if="{{isOwner && hasRunner}}" class="btn-outline action-btn" bindtap="onContactRunner">联系骑手</button>
-    <button wx:if="{{isRunner}}" class="btn-outline action-btn" bindtap="onContact">联系发布者</button>
+    <button wx:if="{{isRunner}}" class="btn-outline action-btn" bindtap="onViewErrandOrder">确认接单</button>
   </view>
 </view>
 

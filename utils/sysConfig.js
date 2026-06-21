@@ -169,8 +169,8 @@ function getCreditMinGate() {
 }
 
 function getCreditCompleteBonus() {
-  const n = Number(getConfig('credit.complete_bonus', '2'))
-  return Number.isFinite(n) ? n : 2
+  const n = Number(getConfig('credit.complete_bonus', '1'))
+  return Number.isFinite(n) ? n : 1
 }
 
 function getCreditTimeoutPenalty() {
@@ -184,8 +184,13 @@ function getCreditCancelPenalty() {
 }
 
 function getCreditFreezeGate() {
-  const n = Number(getConfig('credit.freeze_gate', '40'))
-  return Number.isFinite(n) ? n : 40
+  const n = Number(getConfig('credit.freeze_gate', '60'))
+  return Number.isFinite(n) ? n : 60
+}
+
+function getCreditFreezeDurationDays() {
+  const n = Number(getConfig('credit.freeze_duration_days', '7'))
+  return Number.isFinite(n) && n > 0 ? n : 7
 }
 
 function getCreditErrandBreachPenalty() {
@@ -223,6 +228,43 @@ function getCreditDownrankPenalty() {
   return Number.isFinite(n) ? n : 40
 }
 
+// 评价奖惩：5星+3，4星+2，3星0，2星-2，1星-3
+function getCreditReviewDelta(stars) {
+  const map = {
+    5: Number(getConfig('credit.review_5star', '3')),
+    4: Number(getConfig('credit.review_4star', '2')),
+    3: 0,
+    2: Number(getConfig('credit.review_2star', '-2')),
+    1: Number(getConfig('credit.review_1star', '-3'))
+  }
+  const n = Math.round(Number(stars))
+  return map[n] !== undefined ? map[n] : 0
+}
+
+// 卖家 24h 未确认订单（系统自动确认）
+function getCreditSellerNoConfirmPenalty() {
+  const n = Number(getConfig('credit.seller_no_confirm_penalty', '-1'))
+  return Number.isFinite(n) ? n : -1
+}
+
+// 买家确认付款后卖家 1h 内未确认收款
+function getCreditSellerReceiptTimeoutPenalty() {
+  const n = Number(getConfig('credit.seller_receipt_timeout_penalty', '-2'))
+  return Number.isFinite(n) ? n : -2
+}
+
+// 骑手超 5 分钟送达
+function getCreditErrandLate5minPenalty() {
+  const n = Number(getConfig('credit.errand_late_5min_penalty', '-1'))
+  return Number.isFinite(n) ? n : -1
+}
+
+// 骑手超 1 小时送达
+function getCreditErrandLate1hPenalty() {
+  const n = Number(getConfig('credit.errand_late_1h_penalty', '-3'))
+  return Number.isFinite(n) ? n : -3
+}
+
 module.exports = {
   TYPE_ALL,
   TYPE_BOOK,
@@ -245,5 +287,11 @@ module.exports = {
   getCreditDisputePenalty,
   getCreditDownrankMin,
   getCreditDownrankMax,
-  getCreditDownrankPenalty
+  getCreditDownrankPenalty,
+  getCreditReviewDelta,
+  getCreditFreezeDurationDays,
+  getCreditSellerNoConfirmPenalty,
+  getCreditSellerReceiptTimeoutPenalty,
+  getCreditErrandLate5minPenalty,
+  getCreditErrandLate1hPenalty
 }

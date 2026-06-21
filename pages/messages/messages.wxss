@@ -179,6 +179,105 @@
   margin-top: 6rpx;
 }
 
+/* 通用消息行 */
+.msg-row {
+  margin: 0 24rpx 16rpx;
+  padding: 24rpx;
+  align-items: center;
+  position: relative;
+  border-radius: 16rpx;
+  background: #fff;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.msg-row.unread {
+  background: #f0f6ff;
+}
+
+.msg-row-hover {
+  opacity: 0.85;
+}
+
+.row-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 20rpx;
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
+.sys-avatar {
+  background: linear-gradient(145deg, #e65100, #f57c00);
+  font-size: 36rpx;
+}
+
+.order-avatar {
+  background: linear-gradient(145deg, #388e3c, #4caf50);
+  font-size: 24rpx;
+}
+
+.room-avatar {
+  background: linear-gradient(145deg, #5b8fd4, #4a7ab8);
+  font-size: 36rpx;
+}
+
+.row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-time {
+  font-size: 22rpx;
+  color: #8a9399;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+
+.row-preview {
+  font-size: 26rpx;
+  color: #666;
+  margin-top: 8rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-tag {
+  font-size: 22rpx;
+  color: #4a7ab8;
+  margin-top: 6rpx;
+}
+
+/* 数字红点徽标 */
+.badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  border-radius: 18rpx;
+  background: #e85d4c;
+  color: #fff;
+  font-size: 20rpx;
+  padding: 0 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  box-sizing: border-box;
+}
+
 .empty-state {
   padding: 120rpx 48rpx;
 }
