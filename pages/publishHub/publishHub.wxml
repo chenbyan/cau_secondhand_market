@@ -1,5 +1,4 @@
 <view class="page-search page-safe-bottom">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <view class="search-panel">
     <view class="search-box flex-row">
       <text class="search-icon">⌕</text>

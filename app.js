@@ -106,6 +106,10 @@ App({
     }
     const u = auth.getUserInfo()
     if (u && u.status && u.status !== 'active') {
+      if (u.status === 'disabled') {
+        auth.forceLogoutDisabled()
+        return false
+      }
       await util.showModal('账号受限', '您的账号状态异常，暂时无法使用该功能。')
       return false
     }

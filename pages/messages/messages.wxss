@@ -214,6 +214,21 @@
   font-size: 36rpx;
 }
 
+.credit-avatar {
+  background: linear-gradient(145deg, #7b61d1, #5b47a8);
+  font-size: 30rpx;
+}
+
+.dispute-avatar {
+  background: linear-gradient(145deg, #d4554f, #aa3f3b);
+  font-size: 30rpx;
+}
+
+.status-avatar {
+  background: linear-gradient(145deg, #607d8b, #455a64);
+  font-size: 30rpx;
+}
+
 .order-avatar {
   background: linear-gradient(145deg, #388e3c, #4caf50);
   font-size: 24rpx;

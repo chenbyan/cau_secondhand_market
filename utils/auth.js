@@ -9,6 +9,12 @@ const sysConfig = require('./sysConfig.js')
 const { USER_INFO_KEY } = authStorage
 const VERIFY_SEND_PREFIX = 'verifyEmailLastSend_'
 const CAMPUS_VERIFY_URL = '/pages/my/campusVerify/campusVerify'
+const ACCOUNT_DISABLED_CODE = 'ACCOUNT_DISABLED'
+
+const normalizeCreditScore = (value) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 100
+}
 
 /** 身份认证可选校区（仅东西校区） */
 const CAMPUSES = ['东校区', '西校区']
@@ -58,7 +64,7 @@ const normalizeUser = (bmobUser) => {
     campusEmail: bmobUser.campusEmail || '',
     campusVerifySt: bmobUser.campusVerifySt || '',
     campusVerified: !!bmobUser.campusVerified,
-    creditScore: bmobUser.creditScore != null ? Number(bmobUser.creditScore) : 100,
+    creditScore: normalizeCreditScore(bmobUser.creditScore),
     status: bmobUser.status || 'active',
     username: bmobUser.username || ''
   }
@@ -70,6 +76,24 @@ const persistUserInfo = (bmobUser) => {
     wx.setStorageSync(USER_INFO_KEY, info)
   }
   return info
+}
+
+const clearLocalAuthSession = () => {
+  // Bmob.User.logout() 会调用 wx.clearStorageSync()，会连同聊天已读状态一起清空。
+  // 退出时只删除 Bmob 会话和本地用户信息，保留聊天及其他业务缓存。
+  ;['bmob', 'openid', USER_INFO_KEY].forEach((key) => {
+    try {
+      wx.removeStorageSync(key)
+    } catch (e) {
+      // ignore
+    }
+  })
+}
+
+const createAccountDisabledError = () => {
+  const error = new Error('账户已被禁用，无法登录')
+  error.code = ACCOUNT_DISABLED_CODE
+  return error
 }
 
 const ensureAccountDefaults = async (bmobUser) => {
@@ -114,7 +138,18 @@ const wxLogin = async () => {
   }
   persistBmobSession(user)
   await ensureAccountDefaults(user)
-  const info = persistUserInfo(Bmob.User.current() || user)
+  try {
+    await Bmob.User.updateStorage(user.objectId)
+  } catch (e) {
+    console.warn('登录后刷新用户状态失败，使用登录返回数据', e)
+  }
+  const latestUser = Bmob.User.current() || user
+  const info = normalizeUser(latestUser)
+  if (info && info.status === 'disabled') {
+    clearLocalAuthSession()
+    throw createAccountDisabledError()
+  }
+  persistUserInfo(latestUser)
   const isNewUser = inferIsNewUser(user)
   return { userInfo: info, isNewUser, raw: user }
 }
@@ -138,7 +173,12 @@ const refreshCurrentUserInfo = async () => {
   if (!current || !current.objectId) return current
   try {
     await Bmob.User.updateStorage(current.objectId)
-    return persistUserInfo(Bmob.User.current()) || current
+    const latest = persistUserInfo(Bmob.User.current()) || current
+    if (latest && latest.status === 'disabled') {
+      forceLogoutDisabled()
+      return null
+    }
+    return latest
   } catch (e) {
     console.warn('刷新用户认证状态失败', e)
     return current
@@ -190,13 +230,18 @@ const updateUserInfo = async (data) => {
 }
 
 const logout = () => {
-  try {
-    Bmob.User.logout()
-  } catch (e) {
-    // ignore
-  }
-  wx.removeStorageSync(USER_INFO_KEY)
+  clearLocalAuthSession()
   wx.reLaunch({ url: '/pages/login/login' })
+}
+
+const forceLogoutDisabled = () => {
+  clearLocalAuthSession()
+  wx.showModal({
+    title: '账户已禁用',
+    content: '该账户已被禁用，无法登录。',
+    showCancel: false,
+    complete: () => wx.reLaunch({ url: '/pages/login/login' })
+  })
 }
 
 const checkCampusVerified = () => {
@@ -217,8 +262,14 @@ const guardCampusAction = (options = {}) => {
   }
   const u = getUserInfo()
   if (u && u.status && u.status !== 'active') {
-    util.showToast(u.status === 'disabled' ? '账号已被禁用' : '账号已被冻结')
-    return false
+    if (u.status === 'disabled') {
+      forceLogoutDisabled()
+      return false
+    }
+    if (!(u.status === 'frozen' && options.allowFrozen)) {
+      util.showToast('账号已被冻结')
+      return false
+    }
   }
   if (!checkCampusVerified()) {
     const status = u && u.campusVerifySt
@@ -234,7 +285,7 @@ const guardCampusAction = (options = {}) => {
   }
   if (options.creditGate) {
     const minGate = sysConfig.getCreditMinGate()
-    const score = u && u.creditScore != null ? Number(u.creditScore) : 100
+    const score = normalizeCreditScore(u && u.creditScore)
     if (score < minGate) {
       util.showToast(
         options.creditTip ||
@@ -369,6 +420,7 @@ module.exports = {
   getUserInfo,
   updateUserInfo,
   logout,
+  forceLogoutDisabled,
   checkCampusVerified,
   guardCampusAction,
   requireCampusVerified,
@@ -377,6 +429,7 @@ module.exports = {
   normalizeUser,
   persistUserInfo,
   refreshCurrentUserInfo,
+  ACCOUNT_DISABLED_CODE,
   CAMPUSES,
   CAMPUS_VERIFY_URL,
   USER_INFO_KEY

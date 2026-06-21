@@ -11,7 +11,6 @@ const NOTICE_TYPE = {
   DISPUTE_RECEIVED: 'dispute_received',
   DISPUTE_UPDATE: 'dispute_update',
   CASE_CLOSED: 'case_closed',
-  // 订单状态变更通知
   ORDER_LOCKED: 'order_locked',
   ORDER_CONFIRMED: 'order_confirmed',
   BUYER_PAID: 'buyer_paid',
@@ -22,16 +21,66 @@ const NOTICE_TYPE = {
   ERRAND_CONFIRMED: 'errand_confirmed',
   ERRAND_CANCEL_ACCEPT: 'errand_cancel_accept',
   ERRAND_COMPLETED: 'errand_completed',
+  ERRAND_PICKUP: 'errand_pickup',
+  ERRAND_DELIVERED: 'errand_delivered',
   ORDER_REVIEWED: 'order_reviewed',
-  // 系统类通知
   CREDIT_CHANGED: 'credit_changed',
   ITEM_OFFLINE: 'item_offline',
+  USER_STATUS: 'user_status',
 }
 
-// 系统通知入口合并展示的类型（显示在「系统通知」一行）
+const ORDER_TYPES = [
+  'order_locked', 'order_confirmed', 'buyer_paid', 'seller_received',
+  'order_cancelled', 'errand_requested', 'errand_accepted', 'errand_confirmed',
+  'errand_cancel_accept', 'errand_pickup', 'errand_delivered', 'errand_completed',
+  'order_reviewed'
+]
+
+// 后台/案卷类通知类型（在消息页按业务分类展示）
 const ADMIN_TYPES = [
   'report_received', 'report_reply', 'dispute_received', 'dispute_update', 'case_closed',
-  'credit_changed', 'item_offline'
+  'credit_changed', 'item_offline', 'user_status'
+]
+
+const NOTICE_CATEGORY = {
+  CREDIT: 'credit',
+  USER_STATUS: 'user_status',
+  DISPUTE: 'dispute',
+  ORDER: 'order'
+}
+
+const NOTICE_CATEGORY_META = {
+  credit: {
+    title: '信用分变更通知',
+    avatarText: '信',
+    avatarClass: 'credit-avatar',
+    tagText: '信用分加减 · 账号信用状态'
+  },
+  user_status: {
+    title: '用户状态通知',
+    avatarText: '状',
+    avatarClass: 'status-avatar',
+    tagText: '账号冻结 / 解冻 · 账号状态'
+  },
+  dispute: {
+    title: '纠纷通知',
+    avatarText: '纠',
+    avatarClass: 'dispute-avatar',
+    tagText: '申诉 · 举报 · 胜诉结果'
+  },
+  order: {
+    title: '订单通知',
+    avatarText: '订',
+    avatarClass: 'order-avatar',
+    tagText: '交易订单 · 跑腿订单'
+  }
+}
+
+const NOTICE_CATEGORY_ORDER = [
+  NOTICE_CATEGORY.CREDIT,
+  NOTICE_CATEGORY.USER_STATUS,
+  NOTICE_CATEGORY.DISPUTE,
+  NOTICE_CATEGORY.ORDER
 ]
 
 const TYPE_LABEL = {
@@ -50,9 +99,27 @@ const TYPE_LABEL = {
   errand_confirmed: '接单已确认',
   errand_cancel_accept: '骑手已取消',
   errand_completed: '跑腿已完成',
+  errand_pickup: '骑手已取件',
+  errand_delivered: '跑腿已送达',
   order_reviewed: '收到评价',
   credit_changed: '信用分变更',
   item_offline: '商品下架',
+  user_status: '用户状态',
+}
+
+function getNoticeCategory(type) {
+  if (type === NOTICE_TYPE.CREDIT_CHANGED) return NOTICE_CATEGORY.CREDIT
+  if (type === NOTICE_TYPE.USER_STATUS) return NOTICE_CATEGORY.USER_STATUS
+  if (ORDER_TYPES.indexOf(type) >= 0) return NOTICE_CATEGORY.ORDER
+  if (ADMIN_TYPES.indexOf(type) >= 0) return NOTICE_CATEGORY.DISPUTE
+  return ''
+}
+
+function normalizeNoticeTitle(row) {
+  if (!row) return ''
+  if (row.type === NOTICE_TYPE.ITEM_OFFLINE) return '商品违规，请整改后再上架'
+  if (row.title === '商品已下架，请整改后再上架') return '商品违规，请整改后再上架'
+  return row.title || ''
 }
 
 async function createNotice(payload) {
@@ -162,7 +229,7 @@ async function listNotices(limit = 50) {
       objectId: row.objectId,
       type: row.type || '',
       typeLabel: TYPE_LABEL[row.type] || '通知',
-      title: row.title || '',
+      title: normalizeNoticeTitle(row),
       content: row.content || '',
       caseKey: row.caseKey || '',
       disputeId: row.disputeId || '',
@@ -209,7 +276,6 @@ function syncTabBadge() {
   if (!app) return
   countUnread()
     .then((n) => {
-      // 保留上次 messages 页写入的聊天未读数（存在 globalData.chatUnreadCount 里）
       const chatUnread = (app.globalData && app.globalData.chatUnreadCount) || 0
       app.globalData.unreadNoticeCount = n + chatUnread
       if (typeof app.refreshTabBadge === 'function') {
@@ -232,51 +298,52 @@ async function notifyOrderEvent(toUserId, type, title, content, orderId, itemId)
   })
 }
 
-/** 通知列表分组：系统通知（admin）+ 订单通知（每个订单一组） */
+/** 通知列表分组：后台通知（按信用/商品/纠纷分类）+ 订单通知（每个订单一组） */
 async function listNoticesGrouped(limit = 100) {
   const all = await listNotices(limit)
-  const sysNotices = all.filter((n) => ADMIN_TYPES.indexOf(n.type) >= 0)
-  const orderNotices = all.filter((n) => ADMIN_TYPES.indexOf(n.type) < 0)
 
-  const sysGroup = {
-    unread: sysNotices.filter((n) => !n.read).length,
-    lastTitle: sysNotices.length ? sysNotices[0].title : '',
-    lastContent: sysNotices.length ? sysNotices[0].content : '',
-    timeText: sysNotices.length ? sysNotices[0].timeText : '',
-    count: sysNotices.length,
-    notices: sysNotices
-  }
-
-  // group by orderId (disputeId field), sorted by most-recent first
-  const orderMap = {}
-  for (const n of orderNotices) {
-    const key = n.disputeId || ('_' + n.objectId)
-    if (!orderMap[key]) {
-      orderMap[key] = { orderId: n.disputeId, itemId: n.caseKey, notices: [], unread: 0 }
-    }
-    orderMap[key].notices.push(n)
-    if (!n.read) orderMap[key].unread++
-  }
-  const orderGroups = Object.values(orderMap).map((g) => {
-    const first = g.notices[0]
-    return {
-      orderId: g.orderId,
-      itemId: g.itemId,
-      notices: g.notices,
-      unread: g.unread,
-      lastTitle: first ? first.title : '',
-      lastContent: first ? first.content : '',
-      timeText: first ? first.timeText : ''
+  const categoryMap = {}
+  NOTICE_CATEGORY_ORDER.forEach((category) => {
+    categoryMap[category] = []
+  })
+  all.forEach((n) => {
+    const category = getNoticeCategory(n.type)
+    if (category && categoryMap[category]) {
+      categoryMap[category].push(n)
     }
   })
 
-  return { sysGroup, orderGroups }
+  const noticeGroups = NOTICE_CATEGORY_ORDER.map((category) => {
+    const notices = categoryMap[category] || []
+    if (!notices.length) return null
+    const meta = NOTICE_CATEGORY_META[category]
+    const first = notices[0]
+    return {
+      category,
+      title: meta.title,
+      avatarText: meta.avatarText,
+      avatarClass: meta.avatarClass,
+      tagText: meta.tagText,
+      unread: notices.filter((n) => !n.read).length,
+      count: notices.length,
+      lastTitle: first ? first.title : '',
+      lastContent: first ? first.content : '',
+      timeText: first ? first.timeText : '',
+      notices
+    }
+  }).filter(Boolean)
+
+  return { noticeGroups, orderGroups: [] }
 }
 
 module.exports = {
   NOTICE_TYPE,
+  NOTICE_CATEGORY,
+  NOTICE_CATEGORY_META,
+  NOTICE_CATEGORY_ORDER,
   ADMIN_TYPES,
   TYPE_LABEL,
+  getNoticeCategory,
   createNotice,
   notifyReportReceived,
   notifyDisputeReceived,

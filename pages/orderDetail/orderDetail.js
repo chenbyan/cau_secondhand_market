@@ -284,7 +284,8 @@ Page({
         }
       }
 
-      const terminal = status === 'COMPLETED' || status === 'CANCELLED'
+      const terminal =
+        status === 'CANCELLED' || (status === 'COMPLETED' && postType !== 'errand')
       const showDispute =
         !!currentUserId &&
         (isBuyer || isSeller) &&
@@ -782,6 +783,16 @@ Page({
           return
         }
         await this._updateMeta(orderId, { pickupCodeVerified: true })
+        // 骑手已取件通知
+        const normPickup = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+        notice.notifyOrderEvent(
+          normPickup(this.data.order.buyerId),
+          notice.NOTICE_TYPE.ERRAND_PICKUP,
+          '骑手已取件',
+          `「${this.data.order.itemTitle || '跑腿任务'}」已取件，正在配送中`,
+          orderId,
+          this.data.order.itemId || ''
+        ).catch(() => {})
         util.hideLoading()
         util.showToast('取件码正确，取件成功！', 'success')
       } else if (type === 'verifyDelivery') {
@@ -804,13 +815,22 @@ Page({
         } catch (creditErr) {
           console.warn('信用结算失败', creditErr)
         }
-        // 通知发布者（errand 订单中 buyerId = 发布者）
         const normDel = (v) => (v && typeof v === 'object' ? v.objectId : v) || ''
+        const publisherId = normDel(this.data.order.buyerId)
+        const errandTitle = this.data.order.itemTitle || '跑腿任务'
         notice.notifyOrderEvent(
-          normDel(this.data.order.buyerId),
+          publisherId,
+          notice.NOTICE_TYPE.ERRAND_DELIVERED,
+          '跑腿已送达',
+          `「${errandTitle}」骑手已送达，请确认任务结果`,
+          orderId,
+          this.data.order.itemId || ''
+        ).catch(() => {})
+        notice.notifyOrderEvent(
+          publisherId,
           notice.NOTICE_TYPE.ERRAND_COMPLETED,
           '跑腿任务已完成',
-          `「${this.data.order.itemTitle || '跑腿任务'}」已送达，任务完成`,
+          `「${errandTitle}」已送达，任务完成`,
           orderId,
           this.data.order.itemId || ''
         ).catch(() => {})
@@ -878,6 +898,8 @@ Page({
       errandRow.set('category', '跑腿')
       errandRow.set('errandCategory', '其他跑腿')
       errandRow.set('images', '[]')
+      errandRow.set('linkedOrderId', order.objectId)
+      errandRow.set('linkedGoodsItemId', order.itemId || '')
       const savedItem = await errandRow.save()
 
       // 创建三方配送群聊（买家+卖家，骑手接单后加入）

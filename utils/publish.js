@@ -4,6 +4,7 @@
 var Bmob = require('hydrogen-js-sdk');
 Bmob.initialize('adfd024460d06ae8', '0906');
 const auth = require('./auth.js')
+const util = require('./util.js')
 const credit = require('./credit.js')
 const { CLOUD_STORAGE_ENABLED } = require('./cloudConfig.js')
 const cloudStorage = require('./cloudStorage.js')
@@ -131,6 +132,7 @@ const uploadImage = async (tempFilePath) => {
   if (!auth.checkLoginStatus()) {
     throw new Error('请先登录')
   }
+  await util.assertImageWithinSize(tempFilePath)
   if (CLOUD_STORAGE_ENABLED) {
     return cloudStorage.uploadImage(tempFilePath)
   }
@@ -246,7 +248,15 @@ const chooseAndUploadImages = async (currentCount, maxTotal = 6) => {
       fail: reject
     })
   })
-  const paths = (res.tempFiles || []).map((f) => f.tempFilePath)
+  const files = res.tempFiles || []
+  const oversize = files.find(
+    (f) => f.size != null && f.size > util.MAX_IMAGE_SIZE_BYTES
+  )
+  if (oversize) {
+    util.showToast(`单张图片不能超过 ${util.MAX_IMAGE_SIZE_LABEL}`)
+    return []
+  }
+  const paths = files.map((f) => f.tempFilePath)
   const urls = []
   for (let i = 0; i < paths.length; i++) {
     const url = await uploadImage(paths[i])

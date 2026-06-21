@@ -12,17 +12,22 @@ Page({
     myRoleLabel: '',
     messages: [],
     inputText: '',
-    scrollInto: ''
+    scrollInto: '',
+    sending: false
   },
 
   chatCtx: null,
+  sendingMessage: false,
 
   onBack() {
     util.goBack()
   },
 
   onLoad(options) {
-    if (!auth.guardCampusAction({ tip: '完成校园认证后可进入群聊' })) {
+    if (!auth.guardCampusAction({
+      tip: '完成校园认证后可进入群聊',
+      allowFrozen: true
+    })) {
       setTimeout(() => wx.navigateBack(), 300)
       return
     }
@@ -41,6 +46,16 @@ Page({
 
   async initRoom() {
     const { roomId, itemId } = this.data
+    const currentUser = auth.getUserInfo()
+    if (currentUser && currentUser.status === 'frozen') {
+      const existingRooms = await chat.listRoomsForUser(currentUser.objectId)
+      const canAccess = existingRooms.some((room) => room.objectId === roomId)
+      if (!canAccess) {
+        util.showToast('账号已被冻结，仅可进入已有群聊')
+        setTimeout(() => wx.navigateBack(), 300)
+        return
+      }
+    }
     let title = '群聊'
     let isErrand = false
     const tags = []
@@ -73,7 +88,24 @@ Page({
   async loadMessages() {
     const u = auth.getUserInfo()
     const list = await chat.listMessages(this.data.roomId)
-    const mapped = list.map((m, index) => {
+    const deduped = []
+    ;(list || []).forEach((m) => {
+      const iso = typeof m.createdAt === 'string' ? m.createdAt : m.createdAt && m.createdAt.iso
+      const ts = iso ? new Date(iso).getTime() : 0
+      const prev = deduped[deduped.length - 1]
+      const prevIso = prev && (typeof prev.createdAt === 'string' ? prev.createdAt : prev.createdAt && prev.createdAt.iso)
+      const prevTs = prevIso ? new Date(prevIso).getTime() : 0
+      const looksDuplicated =
+        prev &&
+        prev.senderId === m.senderId &&
+        prev.content === m.content &&
+        (!m.objectId || !prev.objectId || m.objectId !== prev.objectId) &&
+        ts &&
+        prevTs &&
+        Math.abs(ts - prevTs) <= 3000
+      if (!looksDuplicated) deduped.push(m)
+    })
+    const mapped = deduped.map((m, index) => {
       const iso =
         typeof m.createdAt === 'string' ? m.createdAt : m.createdAt && m.createdAt.iso
       return {
@@ -95,8 +127,11 @@ Page({
   },
 
   async onSend() {
+    if (this.sendingMessage || this.data.sending) return
     const text = (this.data.inputText || '').trim()
     if (!text) return
+    this.sendingMessage = true
+    this.setData({ sending: true })
     try {
       await chat.sendMessage(this.data.roomId, text)
       this.setData({ inputText: '' })
@@ -104,6 +139,9 @@ Page({
     } catch (e) {
       console.error(e)
       wx.showToast({ title: '发送失败', icon: 'none' })
+    } finally {
+      this.sendingMessage = false
+      this.setData({ sending: false })
     }
   }
 })

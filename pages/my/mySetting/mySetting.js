@@ -101,7 +101,9 @@ Page({
           fail: reject
         })
       })
-      const path = res.tempFiles[0].tempFilePath
+      const file = res.tempFiles[0]
+      const path = file.tempFilePath
+      await util.assertImageWithinSize(path, file.size)
       this.setData({ uploadingAvatar: true })
       util.showLoading('上传中...')
 

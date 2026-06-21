@@ -12,6 +12,7 @@ const CHAT_LAST_READ_KEY = 'chatLastRead'
 
 // null = 未检测, true = 可用, false = 不可用（表不存在）
 let bmobAvailable = null
+const sendingKeys = {}
 
 const parseJson = (v, fallback) => {
   if (!v) return fallback
@@ -116,7 +117,10 @@ const ensureBmobRoom = async (row, currentUserId) => {
  * 为 Item 创建/更新群并跳转聊天室
  */
 const openChatForItem = async (itemId, options = {}) => {
-  if (!auth.guardCampusAction({ tip: options.tip || '完成校园认证后可联系' })) {
+  if (!auth.guardCampusAction({
+    tip: options.tip || '完成校园认证后可联系',
+    allowFrozen: true
+  })) {
     return null
   }
   const u = auth.getUserInfo()
@@ -127,6 +131,21 @@ const openChatForItem = async (itemId, options = {}) => {
   if (!row) {
     wx.showToast({ title: '内容不存在', icon: 'none' })
     return null
+  }
+  if (u.status === 'frozen') {
+    const existingRooms = await listRoomsForUser(u.objectId)
+    const existingRoom = existingRooms.find((room) => room.itemId === itemId)
+    if (!existingRoom) {
+      wx.showToast({
+        title: '账号已被冻结，仅可在已有群聊中聊天',
+        icon: 'none'
+      })
+      return null
+    }
+    wx.navigateTo({
+      url: `/pages/chatRoom/chatRoom?roomId=${existingRoom.objectId}&itemId=${itemId}`
+    })
+    return existingRoom.objectId
   }
   let roomId
   try {
@@ -202,6 +221,10 @@ const sendMessage = async (roomId, content) => {
   if (!u || !u.objectId) throw new Error('请先登录')
   const text = (content || '').trim()
   if (!text) return
+  const sendKey = roomId + '|' + u.objectId + '|' + text
+  const now = Date.now()
+  if (sendingKeys[sendKey] && now - sendingKeys[sendKey] < 3000) return null
+  sendingKeys[sendKey] = now
   const msg = {
     senderId: u.objectId,
     senderName: u.nickName || '校内用户',
@@ -221,6 +244,7 @@ const sendMessage = async (roomId, content) => {
         room.set('lastMsg', text.slice(0, 60))
         await room.save()
       } catch (e2) { /* ignore */ }
+      delete sendingKeys[sendKey]
       return msg
     } catch (e) {
       bmobAvailable = false
@@ -238,6 +262,7 @@ const sendMessage = async (roomId, content) => {
     rooms[idx].updatedAt = Date.now()
     saveLocalRooms(rooms)
   }
+  delete sendingKeys[sendKey]
   return msg
 }
 

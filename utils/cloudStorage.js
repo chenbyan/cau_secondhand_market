@@ -2,6 +2,7 @@
  * 微信云开发 · 云存储（仅图片上传，业务数据仍用 Bmob）
  */
 const { CLOUD_ENV_ID } = require('./cloudConfig.js')
+const util = require('./util.js')
 
 const UPLOAD_TIMEOUT_MS = 20000
 
@@ -30,9 +31,10 @@ const extFromPath = (tempFilePath) => {
  * 上传单张图片，返回 cloud:// 开头的 fileID（可写入 Item.coverImage / images）
  */
 /** @param {string} tempFilePath @param {string} [folder='items'] 云存储目录，头像用 avatars */
-const uploadImage = (tempFilePath, folder = 'items') => {
+const uploadImage = async (tempFilePath, folder = 'items') => {
   assertCloudApi()
   assertEnvConfigured()
+  await util.assertImageWithinSize(tempFilePath)
 
   const ext = extFromPath(tempFilePath)
   const cloudPath = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext}`

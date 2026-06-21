@@ -1,5 +1,4 @@
 <view class="publish-page page-safe-bottom">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
   <scroll-view scroll-y class="form-scroll">
     <view class="tip-bar card-flat">
       <text class="tip-text">发布后为「未接单」；有同学接单后变为「已接单」；您在「已接单」时可点「标记完成」。</text>

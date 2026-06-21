@@ -1,6 +1,4 @@
 <view class="credit-page page-safe-bottom">
-  <view class="page-back-link" bindtap="onBack">‹ 返回</view>
-
   <view class="summary-band">
     <view class="score-row">
       <text class="score-num">{{score}}</text>
