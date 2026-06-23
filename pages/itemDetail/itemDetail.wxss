@@ -179,10 +179,24 @@
   margin-left: 12rpx;
 }
 
+.phone-tip {
+  font-size: 22rpx;
+  color: #b0b8c1;
+  margin-left: 12rpx;
+}
+
 .runner-block {
   margin-top: 20rpx;
   padding-top: 20rpx;
   border-top: 1rpx solid #eef1f5;
+}
+
+.buyer-phone-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #f0f2f5;
 }
 
 .runner-title {

@@ -228,6 +228,41 @@
   line-height: 1.5;
 }
 
+.contact-card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.contact-title {
+  font-size: 24rpx;
+  color: #8a9399;
+  margin-bottom: 12rpx;
+}
+
+.contact-row {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.contact-phone {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #2d5a8e;
+  letter-spacing: 2rpx;
+}
+
+.btn-copy {
+  font-size: 24rpx;
+  padding: 0 20rpx;
+  background: #eef3fa;
+  color: #2d5a8e;
+  border-radius: 20rpx;
+  border: none;
+  line-height: 56rpx;
+}
+
 .code-verified-tag {
   font-size: 24rpx;
   color: #28a745;

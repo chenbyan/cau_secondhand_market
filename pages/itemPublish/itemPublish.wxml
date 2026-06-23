@@ -1,7 +1,11 @@
 <view class="publish-page page-safe-bottom">
   <scroll-view scroll-y class="form-scroll">
-    <view wx:if="{{rectifyRequired}}" class="rectify-tip card-flat">
-      <text class="rectify-tip-title">商品需整改后重新上架</text>
+    <view wx:if="{{relistPendingReview}}" class="rectify-tip card-flat">
+      <text class="rectify-tip-title">整改已提交，等待管理员审核</text>
+      <text class="rectify-tip-desc">审核通过后将自动重新上架</text>
+    </view>
+    <view wx:elif="{{rectifyRequired}}" class="rectify-tip card-flat">
+      <text class="rectify-tip-title">{{adminOfflineRectify ? '管理员已下架，请整改后提交审核' : '商品需整改后重新上架'}}</text>
       <text class="rectify-tip-desc">{{rectifyReason || '请根据管理员说明修改内容后再提交'}}</text>
       <text class="rectify-tip-hint">至少修改标题、描述、图片或价格中的一项</text>
     </view>
@@ -84,6 +88,6 @@
       loading="{{submitting}}"
       disabled="{{!canSubmit}}"
       bindtap="onSubmit"
-    >{{rectifyRequired ? '提交整改并上架' : (editId ? '保存修改' : '发布物品')}}</button>
+    >{{relistPendingReview ? '已提交审核' : (rectifyRequired ? '提交整改并申请上架' : (editId ? '保存修改' : '发布物品'))}}</button>
   </view>
 </view>

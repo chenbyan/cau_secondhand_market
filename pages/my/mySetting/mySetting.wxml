@@ -9,9 +9,16 @@
       <text class="label">昵称</text>
       <input class="input" maxlength="20" placeholder="2-20 个字符" value="{{form.nickName}}" bindinput="onNick" />
     </view>
+    <view class="field flex-col readonly-field">
+      <text class="label">用户 ID</text>
+      <view class="readonly-val flex-row" bindtap="onCopyUserId">
+        <text class="uid-text">{{userId}}</text>
+        <text class="copy-hint">点击复制</text>
+      </view>
+    </view>
     <view class="field flex-col">
-      <text class="label">联系电话</text>
-      <input class="input" type="number" maxlength="11" placeholder="11 位手机号" value="{{form.phone}}" bindinput="onPhone" />
+      <text class="label">联系电话 <text class="required-mark">*</text></text>
+      <input class="input" type="number" maxlength="11" placeholder="11 位手机号（交易联系必填）" value="{{form.phone}}" bindinput="onPhone" />
     </view>
     <view class="field flex-col">
       <text class="label">微信号</text>

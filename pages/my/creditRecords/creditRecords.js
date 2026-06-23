@@ -56,50 +56,33 @@ Page({
     this.loadList(false)
   },
 
-  refreshSummary(scoreOverride) {
-    const score = normalizeScore(scoreOverride, credit.getCurrentScore())
-    const level = credit.getLevel(score)
+  refreshSummary(score) {
+    const safeScore = normalizeScore(score, credit.getCurrentScore())
+    const level = credit.getLevel(safeScore)
     this.setData({
-      score,
+      score: safeScore,
       levelLabel: level.label,
       levelTone: level.tone,
-      percent: Math.min(100, Math.max(0, score))
+      percent: Math.min(100, Math.max(0, Math.round(safeScore / credit.MAX_SCORE * 100)))
     })
-  },
-
-  async fetchLatestRecordScore(userId) {
-    if (!userId) return null
-    try {
-      const q = Bmob.Query('CreditRecord')
-      q.equalTo('userId', '==', userId)
-      q.order('-createdAt')
-      q.limit(1)
-      const rows = await q.find()
-      if (!rows || !rows.length || rows[0].afterScore == null) return null
-      const score = Number(rows[0].afterScore)
-      return Number.isFinite(score) ? score : null
-    } catch (e) {
-      console.warn('读取最新信用流水失败', e)
-      return null
-    }
   },
 
   async refreshSummaryFromRemote() {
     const u = auth.getUserInfo()
-    if (u && u.objectId) {
-      try {
-        await Bmob.User.updateStorage(u.objectId)
-        auth.persistUserInfo(Bmob.User.current())
-        const app = getApp && getApp()
-        if (app && typeof app.syncGlobalUser === 'function') {
-          app.syncGlobalUser()
-        }
-      } catch (e) {
-        console.warn('刷新信用分缓存失败', e)
+    if (!u || !u.objectId) return
+    try {
+      await credit.syncUserCredit(u.objectId)
+      await Bmob.User.updateStorage(u.objectId)
+      auth.persistUserInfo(Bmob.User.current())
+      const app = getApp && getApp()
+      if (app && typeof app.syncGlobalUser === 'function') {
+        app.syncGlobalUser()
       }
+    } catch (e) {
+      console.warn('刷新信用分缓存失败', e)
     }
-    const latest = await this.fetchLatestRecordScore(u && u.objectId)
-    this.refreshSummary(latest == null ? undefined : latest)
+    const latest = auth.getUserInfo()
+    this.refreshSummary(latest ? latest.creditScore : undefined)
   },
 
   mapRecord(row) {
@@ -137,9 +120,6 @@ Page({
       q.skip(page * PAGE_SIZE)
       const rows = await q.find()
       const mapped = (rows || []).map((row) => this.mapRecord(row))
-      if (reset && mapped.length && mapped[0].afterScore != null) {
-        this.refreshSummary(mapped[0].afterScore)
-      }
       this.setData({
         list: reset ? mapped : this.data.list.concat(mapped),
         page: page + 1,

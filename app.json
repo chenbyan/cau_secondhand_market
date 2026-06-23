@@ -11,6 +11,7 @@
     "pages/my/myOrders/myOrders",
     "pages/my/myItems/myItems",
     "pages/my/myCart/myCart",
+    "pages/my/myBrowse/myBrowse",
     "pages/my/creditRecords/creditRecords",
     "pages/my/about/about",
     "pages/orderDetail/orderDetail",

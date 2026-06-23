@@ -8,6 +8,8 @@ const util = require('../../utils/util.js')
 const itemStatus = require('../../utils/itemStatus.js')
 const credit = require('../../utils/credit.js')
 const itemLock = require('../../utils/itemLock.js')
+const browseHistory = require('../../utils/browseHistory.js')
+const desensitize = require('../../utils/desensitize.js')
 
 Page({
   data: {
@@ -27,7 +29,9 @@ Page({
     sellerId: '',
     runnerId: '',
     isRunner: false,
-    contactPhone: '',
+    sellerPhone: '',
+    sellerPhoneIsFull: false,
+    buyerContactPhones: [],
     runner: null,
     hasRunner: false,
     sellerCreditText: '信用良好 · 建议当面交易',
@@ -82,10 +86,33 @@ Page({
     if (this.itemId && this.loadedOnce) {
       this.loadDetail(this.itemId)
     }
+    this.scheduleBrowseRecord()
   },
 
   onUnload() {
     if (this.timer) clearInterval(this.timer)
+    if (this._browseTimer) clearTimeout(this._browseTimer)
+  },
+
+  scheduleBrowseRecord() {
+    if (this._browseTimer) clearTimeout(this._browseTimer)
+    this._browseTimer = setTimeout(() => {
+      this._browseTimer = null
+      if (!this.itemId || this.data.loading || !this.data.item) return
+      if (!auth.checkLoginStatus() || !auth.checkCampusVerified()) return
+      const item = this.data.item
+      const isErrand = item.isErrand || this.itemSrc === 'errand'
+      let targetType = 'goods'
+      if (isErrand) targetType = 'errand'
+      else if (item.category === '书籍') targetType = 'book'
+      browseHistory.recordView({
+        itemId: this.itemId,
+        targetType,
+        itemTitle: item.title,
+        itemImage: (this.data.images && this.data.images[0]) || '',
+        price: item.price
+      }).catch(() => {})
+    }, 2000)
   },
 
   async loadDetail(id) {
@@ -129,8 +156,8 @@ Page({
       const runnerId = (row.runnerId && row.runnerId.objectId) || row.runnerId || ''
       const isOwner = !!(currentUserId && sellerId === currentUserId)
       const isRunner = !!(currentUserId && runnerId && currentUserId === runnerId)
-      const isErrand = row.postType === publish.POST_TYPE.ERRAND
-      const st = itemStatus.getStatusMeta(row.postType, row.status)
+      const isErrand = row.postType === publish.POST_TYPE.ERRAND || this.itemSrc === 'errand'
+      const st = itemStatus.getStatusMeta(row.postType || (isErrand ? publish.POST_TYPE.ERRAND : 'goods'), row.status)
       const status = row.status
       let sellerCreditText = '信用良好 · 建议当面交易'
       let sellerCreditTone = 'good'
@@ -140,17 +167,6 @@ Page({
         sellerCreditText = `信用分 ${sellerCredit.score} · ${sellerCredit.level.label}`
         sellerCreditTone = sellerCredit.level.tone
       }
-
-      const rawPhone =
-        row.phone ||
-        row.contactPhone ||
-        publish.parseContactFromDescription(row.description) ||
-        ''
-      // 联系电话只对发布者本人和已确认接单的骑手可见
-      const contactPhone =
-        isOwner || (isRunner && (status === 'IN_TRADING' || status === 'SOLD_OUT'))
-          ? rawPhone
-          : ''
 
       const blockedUsers = publish.parseBlockedUsersFromDescription(row.description)
       const isBlockedFromAccept = blockedUsers.length > 0 && !!currentUserId && blockedUsers.includes(currentUserId)
@@ -217,10 +233,54 @@ Page({
 
       this.sellerConfirmDeadline = sellerConfirmDeadline
 
+      // 联系电话从用户注册信息读取：接单/拍下前脱敏，之后对买家/骑手完整显示
+      let sellerPhone = ''
+      let sellerPhoneIsFull = false
+      let buyerContactPhones = []
+      {
+        const rawPhone = await auth.fetchUserPhone(sellerId)
+        if (rawPhone) {
+          if (isErrand) {
+            const runnerCanSee = isRunner && (status === 'IN_TRADING' || status === 'SOLD_OUT')
+            sellerPhone = runnerCanSee ? rawPhone : desensitize.maskPhone(rawPhone)
+            sellerPhoneIsFull = runnerCanSee
+          } else {
+            // 卖家确认（IN_TRADING）后双方才能互相看到完整号码
+            const buyerCanSee = !isOwner && isLockedByMe && status === 'IN_TRADING'
+            sellerPhone = isOwner ? '' : (buyerCanSee ? rawPhone : desensitize.maskPhone(rawPhone))
+            sellerPhoneIsFull = buyerCanSee
+          }
+        }
+        // 卖家端：仅确认订单后（IN_TRADING）才显示已确认买家的手机号
+        if (isOwner && !isErrand && status === 'IN_TRADING' && lockBuyerId) {
+          const confirmedBuyer = sellerLockBuyers.find((b) => b.buyerId === lockBuyerId)
+          const phone = await auth.fetchUserPhone(lockBuyerId)
+          if (phone) {
+            buyerContactPhones = [Object.assign(
+              { buyerId: lockBuyerId, nickName: '买家' },
+              confirmedBuyer || {},
+              { phone }
+            )]
+          }
+        }
+      }
+
+      const soldMaskText = (() => {
+        if (isErrand) {
+          if (status === 'OFFLINE') return '已取消'
+          if (status === 'SOLD_OUT') return '已完成'
+          return '已结束'
+        }
+        if (status === 'OFFLINE') return '已下架'
+        if (status === 'SOLD_OUT') return '已售出'
+        return '已结束'
+      })()
+
       this.setData({
         loading: false,
         images: resolved,
         soldOut: ended,
+        soldMaskText,
         isOwner,
         isErrand,
         showBuyerBar: !isOwner && !ended && !isErrand,
@@ -240,7 +300,9 @@ Page({
         sellerId,
         runnerId,
         isRunner,
-        contactPhone,
+        sellerPhone,
+        sellerPhoneIsFull,
+        buyerContactPhones,
         runner,
         hasRunner: !!(runner && (runner.phone || runner.nickName)),
         sellerCreditText,
@@ -278,6 +340,7 @@ Page({
         wx.setNavigationBarTitle({ title: '跑腿详情' })
       }
       this.loadedOnce = true
+      this.scheduleBrowseRecord()
     } catch (e) {
       util.hideLoading()
       console.error(e)

@@ -51,7 +51,7 @@
     <view class="hero flex-col flex-center">
       <text class="hero-icon">🎓</text>
       <text class="hero-title">校园邮箱认证</text>
-      <text class="text-muted text-center sub">请使用 @cau.edu.cn 后缀的中国农业大学邮箱，提交后由管理员审核</text>
+      <text class="text-muted text-center sub">验证通过后立即生效，无需管理员审核</text>
     </view>
     <view class="card form-card">
       <view class="field flex-col">

@@ -49,8 +49,8 @@ Page({
     const campusIndex = campus ? CAMPUSES.indexOf(campus) : 0
     const status = u.campusVerifySt || ''
     this.setData({
-      verified: !!u.campusVerified,
-      pending: !u.campusVerified && status === 'PENDING',
+      verified: !!u.campusVerified || (status === 'PENDING' && !!u.campusEmail) || status === 'APPROVED',
+      pending: false,
       rejected: !u.campusVerified && status === 'REJECTED',
       user: u,
       email: u.campusEmail || '',
@@ -137,15 +137,12 @@ Page({
         util.showToast(r.message || '验证失败')
         return
       }
-      util.showToast(r.message || '已提交审核', 'success')
+      util.showToast(r.message || '认证成功', 'success')
       await this.syncUser()
       getApp().syncGlobalUser()
-      if (r.message && r.message.indexOf('等待') >= 0) {
-        return
-      }
       setTimeout(() => {
         wx.switchTab({ url: '/pages/my/my' })
-      }, 2000)
+      }, 1200)
     } catch (e) {
       console.error(e)
       util.showToast('验证失败')

@@ -60,6 +60,15 @@
     </view>
   </view>
 
+  <!-- 交易对方联系方式（订单进行中全程可见） -->
+  <view class="card contact-card" wx:if="{{counterpartyPhone}}">
+    <view class="contact-title">{{counterpartyPhoneLabel}}</view>
+    <view class="contact-row flex-row">
+      <text class="contact-phone">{{counterpartyPhone}}</text>
+      <button size="mini" class="btn-copy" bindtap="onCopyCounterpartyPhone">复制</button>
+    </view>
+  </view>
+
   <view class="card review-card" wx:if="{{reviews.length || reviewTip}}">
     <view class="review-title">订单评价</view>
     <text wx:if="{{reviewTip}}" class="review-tip text-muted">{{reviewTip}}</text>

@@ -127,6 +127,68 @@
     <view class="featured-section">
       <view class="section-head flex-row flex-between">
         <view class="section-title-wrap flex-col">
+          <text class="section-title">今日热门</text>
+          <text class="section-subtitle">近 24 小时浏览最多</text>
+        </view>
+      </view>
+      <scroll-view wx:if="{{hotDayItems.length}}" scroll-x class="featured-scroll" enable-flex>
+        <view
+          wx:for="{{hotDayItems}}"
+          wx:key="objectId"
+          class="featured-card hot-card"
+          data-id="{{item.objectId}}"
+          data-type="{{item.recommendType}}"
+          data-category="{{item.category}}"
+          bindtap="onItemTap"
+        >
+          <image class="featured-thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
+          <text class="hot-badge">🔥 {{item.hotCount}}</text>
+          <text class="featured-title">{{item.title}}</text>
+          <view class="featured-bottom flex-row flex-between">
+            <text class="featured-price">{{item.priceText}}</text>
+            <text class="featured-tag">{{item.category}}</text>
+          </view>
+        </view>
+      </scroll-view>
+      <view wx:else class="section-empty card-flat">
+        <text>暂无热门数据，多浏览商品后将按热度推荐</text>
+      </view>
+    </view>
+
+    <view class="featured-section">
+      <view class="section-head flex-row flex-between">
+        <view class="section-title-wrap flex-col">
+          <text class="section-title">本月热门</text>
+          <text class="section-subtitle">近 30 天浏览最多</text>
+        </view>
+      </view>
+      <scroll-view wx:if="{{hotMonthItems.length}}" scroll-x class="featured-scroll" enable-flex>
+        <view
+          wx:for="{{hotMonthItems}}"
+          wx:key="objectId"
+          class="featured-card hot-card"
+          data-id="{{item.objectId}}"
+          data-type="{{item.recommendType}}"
+          data-category="{{item.category}}"
+          bindtap="onItemTap"
+        >
+          <image class="featured-thumb" src="{{item.coverImage || placeholder}}" mode="aspectFill" />
+          <text class="hot-badge">🔥 {{item.hotCount}}</text>
+          <text class="featured-title">{{item.title}}</text>
+          <view class="featured-bottom flex-row flex-between">
+            <text class="featured-price">{{item.priceText}}</text>
+            <text class="featured-tag">{{item.category}}</text>
+          </view>
+        </view>
+      </scroll-view>
+      <view wx:else class="section-empty card-flat">
+        <text>暂无本月热门，持续积累浏览数据后展示</text>
+      </view>
+    </view>
+
+    <view class="featured-section">
+      <view class="section-head flex-row flex-between">
+        <view class="section-title-wrap flex-col">
           <text class="section-title">今日推荐</text>
           <text class="section-subtitle">{{recommendationNote}}</text>
         </view>

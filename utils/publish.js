@@ -6,6 +6,7 @@ Bmob.initialize('adfd024460d06ae8', '0906');
 const auth = require('./auth.js')
 const util = require('./util.js')
 const credit = require('./credit.js')
+const crypto = require('./crypto.js')
 const { CLOUD_STORAGE_ENABLED } = require('./cloudConfig.js')
 const cloudStorage = require('./cloudStorage.js')
 const cloudImage = require('./cloudImage.js')
@@ -308,19 +309,23 @@ const getRunnerContact = async (row) => {
   if (row.runnerPhone || row.runnerNickName) {
     return {
       nickName: row.runnerNickName || '接单人',
-      phone: row.runnerPhone || '',
-      wechatId: row.runnerWechatId || ''
+      phone: crypto.decrypt(row.runnerPhone || ''),
+      wechatId: crypto.decrypt(row.runnerWechatId || '')
     }
   }
 
   const runnerId = (row.runnerId && row.runnerId.objectId) || row.runnerId
   if (runnerId) {
     try {
-      const u = await Bmob.User.get(runnerId)
-      return {
+      const q = Bmob.Query('_User')
+      q.equalTo('objectId', '==', runnerId)
+      q.limit(1)
+      const rows = await q.find()
+      const u = rows && rows[0]
+      if (u) return {
         nickName: u.nickName || '接单人',
-        phone: u.phone || '',
-        wechatId: u.wechatId || ''
+        phone: crypto.decrypt(u.phone || ''),
+        wechatId: crypto.decrypt(u.wechatId || '')
       }
     } catch (e) {
       console.warn('getRunnerContact user', e)
@@ -339,11 +344,15 @@ const getRunnerContact = async (row) => {
     if (active) {
       const bid = (active.buyerId && active.buyerId.objectId) || active.buyerId
       if (bid) {
-        const u = await Bmob.User.get(bid)
-        return {
+        const uq = Bmob.Query('_User')
+        uq.equalTo('objectId', '==', bid)
+        uq.limit(1)
+        const urows = await uq.find()
+        const u = urows && urows[0]
+        if (u) return {
           nickName: u.nickName || '接单人',
-          phone: u.phone || '',
-          wechatId: u.wechatId || ''
+          phone: crypto.decrypt(u.phone || ''),
+          wechatId: crypto.decrypt(u.wechatId || '')
         }
       }
     }

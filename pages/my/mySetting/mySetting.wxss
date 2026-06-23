@@ -2,6 +2,11 @@
   padding-bottom: 48rpx;
 }
 
+.required-mark {
+  color: #c0392b;
+  font-size: 28rpx;
+}
+
 .form-card {
   margin-top: 24rpx;
 }
@@ -52,6 +57,28 @@
   padding: 16rpx;
   background: #f7f7f7;
   border-radius: 8rpx;
+}
+
+.readonly-val {
+  margin-top: 12rpx;
+  padding: 16rpx;
+  background: #f7f7f7;
+  border-radius: 8rpx;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.uid-text {
+  flex: 1;
+  font-size: 24rpx;
+  color: #333;
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.readonly-field .copy-hint {
+  margin-left: 16rpx;
+  flex-shrink: 0;
 }
 
 .save-wrap {

@@ -28,9 +28,11 @@ function onRequest(request, response, modules) {
     findOrder(ticket.orderId || '', function (order) {
       var targetUserId = resolveLiabilityUser(order, ticket, liabilityParty)
       var delta = resolveCreditDelta(body, ticket, violationType)
-      applyLiabilityCredit(targetUserId, delta, ticket, order, function () {
+      applyLiabilityCredit(targetUserId, delta, ticket, order, function (creditErr) {
+        if (creditErr) return endJson(creditErr)
         closeTickets(tickets, liabilityParty, orderOutcome, delta, decisionNote, function () {
-          settleOrder(order, orderOutcome, function () {
+          settleOrder(order, orderOutcome, function (settleErr) {
+            if (settleErr) return endJson(settleErr)
             notifyParticipants(tickets, decisionNote, function () {
               endJson({
                 code: 0,
@@ -68,10 +70,10 @@ function onRequest(request, response, modules) {
   }
 
   function resolveLiabilityUser(order, ticket, party) {
-    if (party === 'buyer') return order && order.buyerId
-    if (party === 'seller') return order && order.sellerId
-    if (party === 'submitter') return ticket && ticket.submitterId
-    if (party === 'respondent') return ticket && ticket.respondentId
+    if (party === 'buyer') return objectIdOf(order && order.buyerId)
+    if (party === 'seller') return objectIdOf(order && order.sellerId)
+    if (party === 'submitter') return objectIdOf(ticket && ticket.submitterId)
+    if (party === 'respondent') return objectIdOf(ticket && ticket.respondentId)
     return ''
   }
 
@@ -102,6 +104,8 @@ function onRequest(request, response, modules) {
   }
 
   function applyDelta(userId, delta, payload, cb) {
+    userId = objectIdOf(userId)
+    if (!userId) return cb(null)
     db.find(
       {
         table: 'CreditRecord',
@@ -114,20 +118,23 @@ function onRequest(request, response, modules) {
       },
       function (ca, cb2) {
         var existed = rt.pickResult(ca, cb2)
-        if (existed && existed.results && existed.results.length) return cb()
+        if (existed && existed.results && existed.results.length) return cb(null)
         db.find({ table: '_User', where: { objectId: userId }, limit: 1 }, function (ua, ub) {
           var userRet = rt.pickResult(ua, ub)
-          if (!userRet || !userRet.results || !userRet.results.length) return cb()
+          if (!userRet || !userRet.results || !userRet.results.length) return cb(null)
           var user = userRet.results[0]
           var beforeScore = normalizeScore(user.creditScore)
           var afterScore = normalizeScore(beforeScore + Number(delta || 0))
           var actualDelta = afterScore - beforeScore
-          var userData = { creditScore: afterScore }
+          var userData = {
+            creditScore: afterScore
+          }
           if ((user.status || 'active') === 'active' && afterScore < 40) {
             userData.status = 'frozen'
             userData.creditFrozen = true
           }
-          db.update({ table: '_User', objectId: userId, data: userData }, function () {
+          updateUserWithVerify(userId, userData, function (updateErr) {
+            if (updateErr) return cb(updateErr)
             db.insert(
               {
                 table: 'CreditRecord',
@@ -145,7 +152,7 @@ function onRequest(request, response, modules) {
                   adminId: payload.adminId || ''
                 }
               },
-              function () { cb() }
+              function () { cb(null) }
             )
           })
         })
@@ -187,7 +194,7 @@ function onRequest(request, response, modules) {
         if (outcome === 'COMPLETED') {
           rewardComplete(order, cb)
         } else {
-          cb()
+          cb(null)
         }
       })
     })
@@ -206,8 +213,10 @@ function onRequest(request, response, modules) {
     var bonus = Number(body.completeBonus || 2)
     var ids = unique([order.buyerId, order.sellerId])
     var i = 0
+    var firstError = null
     function next() {
       if (i >= ids.length) {
+        if (firstError) return cb(firstError)
         return db.update(
           {
             table: 'Order',
@@ -225,9 +234,43 @@ function onRequest(request, response, modules) {
         orderId: order.objectId,
         itemId: order.itemId || '',
         adminId: adminId
-      }, next)
+      }, function (creditErr) {
+        if (creditErr && !firstError) firstError = creditErr
+        next()
+      })
     }
     next()
+  }
+
+  function updateUserWithVerify(userId, patch, cb) {
+    var tables = ['users', '_User']
+    var index = 0
+    var lastError = ''
+
+    function tryNext() {
+      if (index >= tables.length) {
+        return cb({ code: 5002, message: lastError || '用户信用分更新失败' })
+      }
+      db.update({ table: tables[index++], objectId: userId, data: patch }, function (a, b) {
+        var err = rt.pickError(a, b)
+        if (err && !isWriteOk(a, b)) {
+          lastError = errorMessage(err)
+          return tryNext()
+        }
+        db.find({ table: '_User', where: { objectId: userId }, limit: 1 }, function (ua, ub) {
+          var ret = rt.pickResult(ua, ub)
+          if (!ret || !ret.results || !ret.results.length) {
+            lastError = '用户更新后回读失败'
+            return tryNext()
+          }
+          if (userMatchesPatch(ret.results[0], patch)) return cb(null)
+          lastError = '用户更新后回读未生效'
+          tryNext()
+        })
+      })
+    }
+
+    tryNext()
   }
 
   function notifyParticipants(tickets, content, cb) {
@@ -261,7 +304,7 @@ function onRequest(request, response, modules) {
 
 function normalizeScore(value) {
   var n = Number(value)
-  return isFinite(n) ? Math.min(100, Math.max(0, n)) : 100
+  return isFinite(n) ? Math.min(500, Math.max(0, n)) : 100
 }
 
 function dateNow() {
@@ -275,13 +318,53 @@ function unique(list) {
   var seen = {}
   var out = []
   for (var i = 0; i < (list || []).length; i++) {
-    var id = list[i]
+    var id = objectIdOf(list[i])
     if (id && !seen[id]) {
       seen[id] = true
       out.push(id)
     }
   }
   return out
+}
+
+function objectIdOf(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  return value.objectId || value.id || ''
+}
+
+function userMatchesPatch(row, patch) {
+  if (!row) return false
+  if (patch.creditScore != null && normalizeScore(row.creditScore) !== normalizeScore(patch.creditScore)) return false
+  if (patch.status != null && (row.status || 'active') !== patch.status) return false
+  if (patch.creditFrozen != null && !!row.creditFrozen !== !!patch.creditFrozen) return false
+  return true
+}
+
+function isWriteOk(a, b) {
+  var o1 = toObjectValue(a)
+  var o2 = toObjectValue(b)
+  return !!(
+    (o1 && (o1.objectId || o1.createdAt || o1.updatedAt)) ||
+    (o2 && (o2.objectId || o2.createdAt || o2.updatedAt))
+  )
+}
+
+function errorMessage(err) {
+  if (!err) return ''
+  return err.message || err.error || err.msg || JSON.stringify(err)
+}
+
+function toObjectValue(x) {
+  if (!x) return null
+  if (typeof x === 'string') {
+    try {
+      return JSON.parse(x)
+    } catch (e) {
+      return null
+    }
+  }
+  return typeof x === 'object' ? x : null
 }
 
 function bmobRuntime(modules) {
@@ -314,5 +397,16 @@ function bmobRuntime(modules) {
     if (o2 && (o2.objectId || o2.results)) return o2
     return null
   }
-  return { db: db, parseBody: parseBody, pickResult: pickResult }
+  function pickError(a, b) {
+    var o1 = toObject(a)
+    var o2 = toObject(b)
+    if (
+      (o1 && (o1.results || o1.objectId || o1.updatedAt || o1.createdAt)) ||
+      (o2 && (o2.results || o2.objectId || o2.updatedAt || o2.createdAt))
+    ) return null
+    if (o1 && ((o1.code && o1.code !== 0) || o1.error || o1.message) && !o1.results) return o1
+    if (o2 && ((o2.code && o2.code !== 0) || o2.error || o2.message) && !o2.results) return o2
+    return null
+  }
+  return { db: db, parseBody: parseBody, pickResult: pickResult, pickError: pickError }
 }

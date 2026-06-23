@@ -42,6 +42,12 @@ function normalizeScore(value) {
   return Math.min(MAX_SCORE, Math.max(MIN_SCORE, toNumber(value, DEFAULT_SCORE)))
 }
 
+function objectIdOf(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  return value.objectId || value.id || ''
+}
+
 function getLevel(score) {
   const safeScore = normalizeScore(score)
   return LEVELS.find((item) => safeScore >= item.min) || LEVELS[LEVELS.length - 1]
@@ -89,117 +95,98 @@ async function refreshCurrentUser(userId) {
   }
 }
 
-async function hasSourceRecord(userId, source, sourceRef) {
-  if (!userId || !source || !sourceRef) return false
-  try {
-    const q = Bmob.Query('CreditRecord')
-    q.equalTo('userId', '==', userId)
-    q.equalTo('source', '==', source)
-    q.equalTo('sourceRef', '==', sourceRef)
-    q.limit(1)
-    const list = await q.find()
-    return !!(list && list.length)
-  } catch (e) {
-    console.warn('信用流水去重查询失败', e)
-    return false
+function unwrapCloudFunctionResponse(raw) {
+  if (!raw) return {}
+  if (
+    raw.result &&
+    typeof raw.result === 'object' &&
+    (raw.result.code != null || raw.result.result != null || raw.result.skipped != null)
+  ) {
+    return raw.result
   }
-}
-
-async function writeCreditRecord(payload) {
-  try {
-    const row = Bmob.Query('CreditRecord')
-    row.set('userId', payload.userId)
-    row.set('delta', payload.delta)
-    row.set('reason', payload.reason)
-    row.set('source', payload.source)
-    row.set('beforeScore', payload.beforeScore)
-    row.set('afterScore', payload.afterScore)
-    if (payload.sourceRef) row.set('sourceRef', payload.sourceRef)
-    if (payload.orderId) row.set('orderId', payload.orderId)
-    if (payload.itemId) row.set('itemId', payload.itemId)
-    if (payload.adminId) row.set('adminId', payload.adminId)
-    if (payload.requestedDelta != null) {
-      row.set('requestedDelta', payload.requestedDelta)
-    }
-    await row.save()
-  } catch (e) {
-    console.warn('信用流水写入失败', e)
-  }
+  return raw
 }
 
 async function applyDelta(userId, delta, options = {}) {
+  const targetUserId = objectIdOf(userId)
   const numericDelta = toNumber(delta, 0)
-  if (!userId || !numericDelta) return null
+  if (!targetUserId || !numericDelta) return null
 
-  const source = options.source || 'system'
-  const sourceRef = options.sourceRef || ''
-  if (sourceRef && await hasSourceRecord(userId, source, sourceRef)) {
-    return { skipped: true, reason: 'duplicate' }
-  }
-
-  const userRow = await Bmob.User.get(userId)
-  const beforeScore = normalizeScore(userRow.creditScore)
-  const afterScore = normalizeScore(beforeScore + numericDelta)
-  const actualDelta = afterScore - beforeScore
-
-  userRow.set('creditScore', afterScore)
-
-  const freezeGate = sysConfig.getCreditFreezeGate()
-  const currentStatus = userRow.status || 'active'
-  const shouldFreeze =
-    options.autoFreeze !== false &&
-    currentStatus === 'active' &&
-    afterScore < freezeGate
-
-  if (shouldFreeze) {
-    userRow.set('status', 'frozen')
-    userRow.set('creditFrozen', true)
-    const days = sysConfig.getCreditFreezeDurationDays()
-    userRow.set('frozenUntil', {
-      __type: 'Date',
-      iso: new Date(Date.now() + days * 86400000).toISOString()
+  let raw
+  try {
+    raw = await Bmob.functions('creditApply', {
+      userId:     targetUserId,
+      delta:      numericDelta,
+      source:     options.source    || 'system',
+      sourceRef:  options.sourceRef || '',
+      reason:     options.reason    || '信用分变更',
+      orderId:    options.orderId   || '',
+      itemId:     options.itemId    || '',
+      adminId:    options.adminId   || '',
+      freezeGate: sysConfig.getCreditFreezeGate(),
+      freezeDays: sysConfig.getCreditFreezeDurationDays()
     })
+  } catch (e) {
+    console.warn('creditApply 云函数调用失败', e)
+    throw e
   }
 
-  await userRow.save()
+  const resp = unwrapCloudFunctionResponse(raw)
+  if (resp.code != null && Number(resp.code) !== 0) {
+    throw new Error(resp.message || '信用分更新失败')
+  }
+  if (resp.skipped) {
+    if (resp.reason === 'duplicate') {
+      await syncUserCredit(targetUserId)
+    }
+    return { skipped: true, reason: resp.reason }
+  }
 
-  await writeCreditRecord({
-    userId,
-    delta: actualDelta,
-    requestedDelta: numericDelta,
-    reason: options.reason || '信用分变更',
-    source,
-    sourceRef,
-    beforeScore,
-    afterScore,
-    orderId: options.orderId,
-    itemId: options.itemId,
-    adminId: options.adminId
-  })
-
-  await refreshCurrentUser(userId)
-
-  // 通知用户信用分发生了变化
-  notice.createNotice({
-    userId,
-    type: notice.NOTICE_TYPE.CREDIT_CHANGED,
-    title: actualDelta >= 0 ? `信用分 +${actualDelta}` : `信用分 ${actualDelta}`,
-    content: `${options.reason || '信用分变更'} · 当前信用分：${afterScore}${shouldFreeze ? ' · 账号已冻结' : ''}`
-  }).catch(() => {})
-
+  const r = resp.result || {}
+  await refreshCurrentUser(targetUserId)
   return {
-    userId,
-    beforeScore,
-    afterScore,
-    delta: actualDelta,
+    userId:         targetUserId,
+    beforeScore:    r.beforeScore,
+    afterScore:     r.afterScore,
+    delta:          r.delta,
     requestedDelta: numericDelta,
-    frozen: shouldFreeze
+    frozen:         r.frozen
   }
+}
+
+async function syncUserCredit(userId) {
+  const targetUserId = objectIdOf(userId)
+  if (!targetUserId) return null
+  let raw
+  try {
+    raw = await Bmob.functions('creditApply', {
+      userId: targetUserId,
+      delta: 0,
+      action: 'sync',
+      syncOnly: true,
+      freezeGate: sysConfig.getCreditFreezeGate(),
+      freezeDays: sysConfig.getCreditFreezeDurationDays()
+    })
+  } catch (e) {
+    console.warn('同步信用分失败', e)
+    return null
+  }
+
+  const resp = unwrapCloudFunctionResponse(raw)
+  if (resp.code != null && Number(resp.code) !== 0) {
+    console.warn('同步信用分失败', resp.message || resp)
+    return null
+  }
+  const r = resp.result || {}
+  if (r.synced) {
+    await refreshCurrentUser(targetUserId)
+  }
+  return r
 }
 
 function uniq(list) {
   const seen = {}
-  return (list || []).filter((id) => {
+  return (list || []).map(objectIdOf).filter((id) => {
     if (!id || seen[id]) return false
     seen[id] = true
     return true
@@ -223,7 +210,7 @@ async function markOrderCreditSettled(orderId, data = {}) {
 }
 
 async function rewardOrderComplete(order) {
-  if (!order || !order.objectId || order.creditSettled) {
+  if (!order || !order.objectId) {
     return { skipped: true }
   }
   const bonus = sysConfig.getCreditCompleteBonus()
@@ -250,8 +237,9 @@ async function penalizeSellerTimeout(order) {
     return { skipped: true }
   }
   const delta = sysConfig.getCreditTimeoutPenalty()
-  if (!delta || !order.sellerId) return { skipped: true, reason: 'no_seller' }
-  const result = await applyDelta(order.sellerId, delta, {
+  const sellerId = objectIdOf(order.sellerId)
+  if (!delta || !sellerId) return { skipped: true, reason: 'no_seller' }
+  const result = await applyDelta(sellerId, delta, {
     source: SOURCE.ORDER_TIMEOUT,
     sourceRef: `${order.objectId}:seller_timeout`,
     orderId: order.objectId,
@@ -267,8 +255,9 @@ async function penalizeBuyerCancel(order) {
     return { skipped: true }
   }
   const delta = sysConfig.getCreditCancelPenalty()
-  if (!delta || !order.buyerId) return { skipped: true, reason: 'no_buyer' }
-  const result = await applyDelta(order.buyerId, delta, {
+  const buyerId = objectIdOf(order.buyerId)
+  if (!delta || !buyerId) return { skipped: true, reason: 'no_buyer' }
+  const result = await applyDelta(buyerId, delta, {
     source: SOURCE.ORDER_CANCEL,
     sourceRef: `${order.objectId}:buyer_cancel`,
     orderId: order.objectId,
@@ -283,7 +272,7 @@ async function penalizeErrandBreach(order, userId) {
   if (!order || !order.objectId) {
     return { skipped: true }
   }
-  const targetId = userId || order.sellerId
+  const targetId = objectIdOf(userId || order.sellerId)
   if (!targetId) return { skipped: true, reason: 'no_target' }
   const delta = sysConfig.getCreditErrandBreachPenalty()
   if (!delta) return { skipped: true, reason: 'zero_delta' }
@@ -335,11 +324,12 @@ async function penalizeDisputeLiability(userId, options = {}) {
 
 // 评价奖惩：revieweeId 为被评价方，rating 1-5，sourceRef 通常为 orderId
 async function rewardReview(revieweeId, rating, sourceRef) {
-  if (!revieweeId) return { skipped: true }
+  const targetUserId = objectIdOf(revieweeId)
+  if (!targetUserId) return { skipped: true }
   const delta = sysConfig.getCreditReviewDelta(rating)
   if (!delta) return { skipped: true, reason: 'neutral_rating' }
   const sign = delta > 0 ? '+' : ''
-  return applyDelta(revieweeId, delta, {
+  return applyDelta(targetUserId, delta, {
     source: SOURCE.ORDER_REVIEW,
     sourceRef: sourceRef ? `${sourceRef}:review_${rating}star` : '',
     reason: `收到 ${rating} 星评价 (${sign}${delta}分)`
@@ -350,8 +340,9 @@ async function rewardReview(revieweeId, rating, sourceRef) {
 async function penalizeSellerNoConfirm(order) {
   if (!order || !order.objectId) return { skipped: true }
   const delta = sysConfig.getCreditSellerNoConfirmPenalty()
-  if (!delta || !order.sellerId) return { skipped: true }
-  return applyDelta(order.sellerId, delta, {
+  const sellerId = objectIdOf(order.sellerId)
+  if (!delta || !sellerId) return { skipped: true }
+  return applyDelta(sellerId, delta, {
     source: SOURCE.SELLER_NO_CONFIRM,
     sourceRef: `${order.objectId}:seller_no_confirm`,
     orderId: order.objectId,
@@ -364,8 +355,9 @@ async function penalizeSellerNoConfirm(order) {
 async function penalizeSellerReceiptTimeout(order) {
   if (!order || !order.objectId) return { skipped: true }
   const delta = sysConfig.getCreditSellerReceiptTimeoutPenalty()
-  if (!delta || !order.sellerId) return { skipped: true }
-  return applyDelta(order.sellerId, delta, {
+  const sellerId = objectIdOf(order.sellerId)
+  if (!delta || !sellerId) return { skipped: true }
+  return applyDelta(sellerId, delta, {
     source: SOURCE.SELLER_NO_RECEIPT,
     sourceRef: `${order.objectId}:seller_no_receipt`,
     orderId: order.objectId,
@@ -384,7 +376,7 @@ async function penalizeErrandLate(order, minutesLate) {
     : sysConfig.getCreditErrandLate5minPenalty()
   if (!delta) return { skipped: true }
   // 跑腿订单中 sellerId = 骑手
-  const runnerId = (typeof order.sellerId === 'object' ? order.sellerId.objectId : order.sellerId) || ''
+  const runnerId = objectIdOf(order.sellerId)
   if (!runnerId) return { skipped: true, reason: 'no_runner' }
   return applyDelta(runnerId, delta, {
     source: SOURCE.ERRAND_LATE,
@@ -398,7 +390,12 @@ async function penalizeErrandLate(order, minutesLate) {
 async function getUserCreditProfile(userId) {
   if (!userId) return null
   try {
-    const user = await Bmob.User.get(userId)
+    const q = Bmob.Query('_User')
+    q.equalTo('objectId', '==', userId)
+    q.limit(1)
+    const rows = await q.find()
+    if (!rows || !rows.length) return null
+    const user = rows[0]
     const score = normalizeScore(user.creditScore)
     return {
       userId,
@@ -416,21 +413,25 @@ async function getUserCreditProfile(userId) {
 
 function getRowSellerId(row) {
   if (!row) return ''
-  return (row.sellerId && row.sellerId.objectId) || row.sellerId || ''
+  return objectIdOf(row.sellerId)
 }
 
 async function buildUserCreditMap(userIds) {
-  const ids = uniq(userIds)
+  const ids = uniq(userIds).filter(Boolean)
   const map = {}
-  for (let i = 0; i < ids.length; i++) {
-    const userId = ids[i]
-    try {
-      const user = await Bmob.User.get(userId)
-      map[userId] = normalizeScore(user.creditScore)
-    } catch (e) {
-      map[userId] = DEFAULT_SCORE
-    }
+  if (!ids.length) return map
+  try {
+    const q = Bmob.Query('_User')
+    q.containedIn('objectId', ids)
+    q.limit(ids.length > 50 ? 50 : ids.length)
+    const rows = await q.find()
+    ;(rows || []).forEach((row) => {
+      if (row.objectId) map[row.objectId] = normalizeScore(row.creditScore)
+    })
+  } catch (e) {
+    console.warn('批量读取信用分失败', e)
   }
+  ids.forEach((id) => { if (map[id] == null) map[id] = DEFAULT_SCORE })
   return map
 }
 
@@ -464,6 +465,7 @@ module.exports = {
   getRankPenalty,
   buildGateMessage,
   applyDelta,
+  syncUserCredit,
   rewardOrderComplete,
   rewardReview,
   penalizeSellerTimeout,

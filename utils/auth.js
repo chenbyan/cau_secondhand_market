@@ -5,6 +5,7 @@ const Bmob = require('./bmob.js')
 const util = require('./util.js')
 const authStorage = require('./authStorage.js')
 const sysConfig = require('./sysConfig.js')
+const crypto = require('./crypto.js')
 
 const { USER_INFO_KEY } = authStorage
 const VERIFY_SEND_PREFIX = 'verifyEmailLastSend_'
@@ -13,7 +14,7 @@ const ACCOUNT_DISABLED_CODE = 'ACCOUNT_DISABLED'
 
 const normalizeCreditScore = (value) => {
   const n = Number(value)
-  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 100
+  return Number.isFinite(n) ? Math.min(500, Math.max(0, n)) : 100
 }
 
 /** 身份认证可选校区（仅东西校区） */
@@ -44,7 +45,7 @@ const persistBmobSession = (bmobUser) => {
   }
 }
 
-/** 从 Bmob 用户对象整理为本地缓存结构 */
+/** 从 Bmob 用户对象整理为本地缓存结构（自动解密敏感字段） */
 const normalizeUser = (bmobUser) => {
   if (!bmobUser) return null
   const weapp = bmobUser.authData && bmobUser.authData.weapp
@@ -57,11 +58,11 @@ const normalizeUser = (bmobUser) => {
     openid,
     nickName: bmobUser.nickName || bmobUser.username || '',
     avatarUrl: bmobUser.avatarUrl || bmobUser.userPic || '',
-    phone: bmobUser.phone || '',
-    wechatId: bmobUser.wechatId || '',
+    phone: crypto.decrypt(bmobUser.phone || ''),
+    wechatId: crypto.decrypt(bmobUser.wechatId || ''),
     campus: bmobUser.campus || '',
     dormitory: bmobUser.dormitory || '',
-    campusEmail: bmobUser.campusEmail || '',
+    campusEmail: crypto.decrypt(bmobUser.campusEmail || ''),
     campusVerifySt: bmobUser.campusVerifySt || '',
     campusVerified: !!bmobUser.campusVerified,
     creditScore: normalizeCreditScore(bmobUser.creditScore),
@@ -195,7 +196,7 @@ const findCampusEmailOwner = async (email, currentUserId) => {
   if (!email) return null
   try {
     const q = Bmob.Query('_User')
-    q.equalTo('campusEmail', '==', email)
+    q.equalTo('campusEmail', '==', crypto.encrypt(email))
     q.limit(20)
     const rows = await q.find()
     return (rows || []).find((u) => {
@@ -213,8 +214,10 @@ const findCampusEmailOwner = async (email, currentUserId) => {
 }
 
 /**
- * 更新当前用户字段并写回 Bmob 与本地缓存
+ * 更新当前用户字段并写回 Bmob 与本地缓存（自动加密敏感字段）
  */
+const ENCRYPT_FIELDS = ['phone', 'wechatId', 'campusEmail']
+
 const updateUserInfo = async (data) => {
   const current = Bmob.User.current()
   if (!current || !current.objectId) {
@@ -222,7 +225,11 @@ const updateUserInfo = async (data) => {
   }
   const row = await Bmob.User.get(current.objectId)
   Object.keys(data).forEach((k) => {
-    if (data[k] !== undefined) row.set(k, data[k])
+    if (data[k] === undefined) return
+    const val = ENCRYPT_FIELDS.indexOf(k) >= 0 && data[k]
+      ? crypto.encrypt(data[k])
+      : data[k]
+    row.set(k, val)
   })
   await row.save()
   await Bmob.User.updateStorage(current.objectId)
@@ -246,7 +253,12 @@ const forceLogoutDisabled = () => {
 
 const checkCampusVerified = () => {
   const u = getUserInfo()
-  return !!(u && u.campusVerified)
+  if (!u) return false
+  if (u.campusVerified) return true
+  if (u.campusVerifySt === 'APPROVED') return true
+  // 兼容旧版：邮箱验证码通过后即视为有效，不再等待管理员
+  if (u.campusVerifySt === 'PENDING' && u.campusEmail) return true
+  return false
 }
 
 /**
@@ -274,9 +286,7 @@ const guardCampusAction = (options = {}) => {
   if (!checkCampusVerified()) {
     const status = u && u.campusVerifySt
     let tipMsg = tip
-    if (status === 'PENDING') {
-      tipMsg = '校园认证审核中，请等待管理员通过'
-    } else if (status === 'REJECTED') {
+    if (status === 'REJECTED') {
       tipMsg = '校园认证未通过，请重新提交'
     }
     util.showToast(tipMsg)
@@ -326,8 +336,8 @@ const sendVerifyCode = async (email) => {
   if (current && current.campusVerified) {
     return { success: false, message: '您已通过校园认证' }
   }
-  if (current && current.campusVerifySt === 'PENDING') {
-    return { success: false, message: '已有申请在审核中，请耐心等待' }
+  if (current && current.campusVerifySt === 'PENDING' && current.campusEmail) {
+    return { success: false, message: '该邮箱已提交过认证，请刷新页面或重新登录' }
   }
   const lastKey = `${VERIFY_SEND_PREFIX}${email}`
   const last = wx.getStorageSync(lastKey) || 0
@@ -343,9 +353,10 @@ const sendVerifyCode = async (email) => {
     return { success: false, message: '该校园邮箱已被其他账号提交或认证，请更换邮箱或联系管理员' }
   }
   const code = `${Math.floor(100000 + Math.random() * 900000)}`
+  const salt = crypto.randomSalt()
   const verify = Bmob.Query('VerifyCode')
-  verify.set('email', email)
-  verify.set('code', code)
+  verify.set('email', crypto.encrypt(email))
+  verify.set('code', crypto.hashCode(code, salt))
   verify.set('userId', Bmob.Pointer('_User').set(u.objectId))
   verify.set('expireAt', dateFromNowMinutes(5))
   verify.set('used', false)
@@ -374,8 +385,8 @@ const verifyCode = async (email, code, campus) => {
   if (current && current.campusVerified) {
     return { success: true, message: '您已通过校园认证' }
   }
-  if (current && current.campusVerifySt === 'PENDING') {
-    return { success: false, message: '已有申请在审核中，请耐心等待' }
+  if (current && current.campusVerifySt === 'PENDING' && current.campusEmail) {
+    return { success: false, message: '该邮箱已提交过认证，请刷新页面或重新登录' }
   }
   if (!email || !code) {
     return { success: false, message: '请输入邮箱和验证码' }
@@ -391,27 +402,53 @@ const verifyCode = async (email, code, campus) => {
     return { success: false, message: '该校园邮箱已被其他账号提交或认证，请更换邮箱或联系管理员' }
   }
   const q = Bmob.Query('VerifyCode')
-  q.equalTo('email', '==', email)
-  q.equalTo('code', '==', `${code}`)
+  q.equalTo('email', '==', crypto.encrypt(email))
   q.equalTo('userId', '==', Bmob.Pointer('_User').set(current.objectId))
   q.equalTo('used', '==', false)
   q.equalTo('expireAt', '>', dateGtNowIso())
-  q.limit(1)
+  q.limit(10)
   const list = await q.find()
-  if (!list || !list.length) {
+  const row = (list || []).find((r) => crypto.verifyCode(code, r.code))
+  if (!row) {
     return { success: false, message: '验证码错误或已过期' }
   }
-  const row = list[0]
   const rec = await Bmob.Query('VerifyCode').get(row.objectId)
   rec.set('used', true)
   await rec.save()
   await updateUserInfo({
-    campusVerified: false,
-    campusVerifySt: 'PENDING',
+    campusVerified: true,
+    campusVerifySt: 'APPROVED',
     campusEmail: email,
     campus
   })
-  return { success: true, message: '已提交，请等待管理员审核' }
+  return { success: true, message: '校园认证成功' }
+}
+
+/**
+ * 检查当前登录用户是否已填写手机号
+ */
+const checkPhoneSet = () => {
+  const u = getUserInfo()
+  return !!(u && u.phone && String(u.phone).trim())
+}
+
+/**
+ * 查询任意用户的手机号（从 _User 表解密后返回明文）
+ */
+const fetchUserPhone = async (userId) => {
+  if (!userId) return ''
+  try {
+    const q = Bmob.Query('_User')
+    q.equalTo('objectId', '==', userId)
+    q.limit(1)
+    const rows = await q.find()
+    const u = rows && rows[0]
+    if (!u) return ''
+    return crypto.decrypt(u.phone || '')
+  } catch (e) {
+    console.warn('fetchUserPhone 失败', e)
+    return ''
+  }
 }
 
 module.exports = {
@@ -422,6 +459,8 @@ module.exports = {
   logout,
   forceLogoutDisabled,
   checkCampusVerified,
+  checkPhoneSet,
+  fetchUserPhone,
   guardCampusAction,
   requireCampusVerified,
   sendVerifyCode,

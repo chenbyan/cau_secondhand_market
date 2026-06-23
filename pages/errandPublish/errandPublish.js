@@ -68,9 +68,26 @@ Page({
       setTimeout(() => wx.navigateBack(), 300)
       return
     }
+    if (!auth.checkPhoneSet()) {
+      wx.showModal({
+        title: '手机号必填',
+        content: '发布跑腿需要手机号供骑手联系，请先完善个人信息',
+        confirmText: '去填写',
+        showCancel: false,
+        success: () => wx.redirectTo({ url: '/pages/my/mySetting/mySetting' })
+      })
+      return
+    }
     wx.setNavigationBarTitle({
       title: options && options.id ? '编辑跑腿' : '发布跑腿'
     })
+    // 从注册信息预填联系电话（骑手接单后可见）
+    if (!id) {
+      const u = auth.getUserInfo()
+      if (u && u.phone) {
+        this.setData({ 'form.contactPhone': u.phone })
+      }
+    }
     if (id) {
       this.setData({ editId: id })
       this.loadItem(id)

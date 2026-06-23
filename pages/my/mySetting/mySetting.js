@@ -13,6 +13,7 @@ const campuses = auth.CAMPUSES
 
 Page({
   data: {
+    userId: '',
     form: {
       nickName: '',
       avatarUrl: '',
@@ -55,6 +56,7 @@ Page({
       }
     }
     this.setData({
+      userId: u.objectId || '',
       form: {
         nickName: u.nickName || '',
         avatarUrl: u.avatarUrl || '',
@@ -70,6 +72,15 @@ Page({
 
   onNick(e) {
     this.setData({ 'form.nickName': e.detail.value })
+  },
+
+  onCopyUserId() {
+    const id = this.data.userId
+    if (!id) return
+    wx.setClipboardData({
+      data: id,
+      success: () => util.showToast('ID 已复制', 'success')
+    })
   },
   onPhone(e) {
     this.setData({ 'form.phone': e.detail.value })

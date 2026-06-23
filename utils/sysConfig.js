@@ -20,7 +20,14 @@ let loadingPromise = null
 
 function namesByScope(categories, scope) {
   return (categories || [])
-    .filter((c) => c.enabled !== false && (c.scope || 'goods') === scope)
+    .filter((c) => {
+      if (c.enabled === false) return false
+      if ((c.scope || 'goods') !== scope) return false
+      const name = String(c.name || '').trim()
+      if (!name || name === '_init_placeholder' || name.indexOf('_init') === 0) return false
+      if (c.scope === 'parttime') return false
+      return true
+    })
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
     .map((c) => c.name)
     .filter(Boolean)

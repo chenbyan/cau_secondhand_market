@@ -20,13 +20,21 @@ function trimContent(value) {
   return String(value || '').trim().slice(0, 200)
 }
 
+function objectIdOf(value) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  return value.objectId || value.id || ''
+}
+
 function getReviewee(order, reviewerId) {
   if (!order || !reviewerId) return null
-  if (reviewerId === order.buyerId) {
-    return { revieweeId: order.sellerId, reviewerRole: 'buyer' }
+  const buyerId = objectIdOf(order.buyerId)
+  const sellerId = objectIdOf(order.sellerId)
+  if (reviewerId === buyerId) {
+    return { revieweeId: sellerId, reviewerRole: 'buyer' }
   }
-  if (reviewerId === order.sellerId) {
-    return { revieweeId: order.buyerId, reviewerRole: 'seller' }
+  if (reviewerId === sellerId) {
+    return { revieweeId: buyerId, reviewerRole: 'seller' }
   }
   return null
 }
@@ -138,10 +146,12 @@ async function submitOrderReview(orderId, rating, content) {
     console.warn('订单评价状态回写失败', e)
   }
 
-  // 根据星级给被评价方加/扣分
-  credit.rewardReview(target.revieweeId, clampRating(rating), orderId).catch((e) => {
+  try {
+    await credit.rewardReview(target.revieweeId, clampRating(rating), orderId)
+  } catch (e) {
     console.warn('评价信用分结算失败', e)
-  })
+    return { success: true, message: '评价已提交，信用分将在订单详情中自动同步' }
+  }
 
   return { success: true, message: '评价已提交' }
 }

@@ -1,0 +1,42 @@
+<view class="browse-page page-safe-bottom">
+  <view class="browse-toolbar flex-row flex-between" wx:if="{{list.length}}">
+    <text class="browse-tip text-muted">最近浏览（最多保留 100 条）</text>
+    <text class="clear-link" bindtap="onClearAll">清空</text>
+  </view>
+
+  <scroll-view scroll-y class="list-wrap">
+    <view wx:if="{{loading}}" class="state text-muted text-center">加载中...</view>
+    <block wx:for="{{list}}" wx:key="objectId">
+      <view class="browse-row card-flat flex-row {{item.isEnded || item.itemMissing ? 'browse-ended' : ''}}">
+        <view class="thumb-wrap" data-item-id="{{item.itemId}}" data-target-type="{{item.targetType}}" data-missing="{{item.itemMissing}}" bindtap="onOpenItem">
+          <image
+            class="thumb"
+            src="{{item.displayImage || placeholder}}"
+            mode="aspectFill"
+          />
+          <view wx:if="{{item.isEnded || item.itemMissing}}" class="thumb-mask">{{item.statusLabel}}</view>
+        </view>
+        <view
+          class="info flex-col"
+          data-item-id="{{item.itemId}}"
+          data-target-type="{{item.targetType}}"
+          data-missing="{{item.itemMissing}}"
+          bindtap="onOpenItem"
+        >
+          <view class="title-row flex-row">
+            <text class="title">{{item.itemTitle}}</text>
+            <view class="{{item.statusClass}} status-tag">{{item.statusLabel}}</view>
+          </view>
+          <text class="price">¥ {{item.price}}</text>
+          <text class="text-muted time">{{item.viewedAtText}}</text>
+        </view>
+        <view class="del-btn" data-id="{{item.objectId}}" catchtap="onRemove">删除</view>
+      </view>
+    </block>
+    <view wx:if="{{!loading && !list.length}}" class="empty flex-col flex-center">
+      <text class="empty-icon">👀</text>
+      <text class="text-muted">暂无浏览记录</text>
+      <button class="btn-primary empty-btn" bindtap="goIndex">去首页逛逛</button>
+    </view>
+  </scroll-view>
+</view>

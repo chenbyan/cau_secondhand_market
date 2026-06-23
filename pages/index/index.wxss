@@ -571,6 +571,21 @@
   padding: 24rpx;
   font-size: 22rpx;
 }
+
+.hot-card {
+  position: relative;
+}
+
+.hot-badge {
+  position: absolute;
+  top: 8rpx;
+  left: 8rpx;
+  padding: 4rpx 10rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: rgba(229, 69, 69, 0.88);
+  border-radius: 20rpx;
+}
 .page-index {
   min-height: 100vh;
 }
@@ -1159,4 +1174,19 @@
 .footer-hint {
   padding: 24rpx;
   font-size: 22rpx;
+}
+
+.hot-card {
+  position: relative;
+}
+
+.hot-badge {
+  position: absolute;
+  top: 8rpx;
+  left: 8rpx;
+  padding: 4rpx 10rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: rgba(229, 69, 69, 0.88);
+  border-radius: 20rpx;
 }

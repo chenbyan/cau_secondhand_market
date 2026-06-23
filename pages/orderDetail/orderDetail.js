@@ -72,6 +72,9 @@ Page({
     // 倒计时（买卖双方共享）
     countdown: '',
     payExpireAt: 0,
+    // 交易对方联系方式
+    counterpartyPhone: '',
+    counterpartyPhoneLabel: '',
     placeholder: 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
   },
 
@@ -229,7 +232,7 @@ Page({
       let showCancelErrand = false
       let linkedErrand = null
       if (postType !== 'errand' && (isBuyer || isSeller) && !frozen) {
-        if (status === 'PENDING_CONFIRM' || status === 'IN_TRADING' || status === 'SHIPPED') {
+        if (status === 'PENDING_CONFIRM' || status === 'IN_TRADING') {
           if (errandItemId) {
             try {
               const errandItem = await Bmob.Query('Errand').get(errandItemId)
@@ -333,9 +336,37 @@ Page({
         }
       }
 
+      if (status === 'COMPLETED' && (isBuyer || isSeller)) {
+        this.repairCompletedOrderCredit(row, reviews).catch((e) => {
+          console.warn('完成订单信用分同步失败', e)
+        })
+      }
+
       // 普通商品订单：买卖双方均可联系对方（订单未取消时）
       const showChat = postType !== 'errand' && (isBuyer || isSeller) && status !== 'CANCELLED'
       const showLinkedChat = !!(linkedErrand && linkedChatRoomId)
+
+      // 交易对方手机号（完整可见，仅在订单进行中显示）
+      let counterpartyPhone = ''
+      let counterpartyPhoneLabel = ''
+      if (postType === 'errand') {
+        if (isBuyer && status === 'IN_TRADING') {
+          counterpartyPhone = await auth.fetchUserPhone(rowSellerId)
+          counterpartyPhoneLabel = '骑手手机号'
+        } else if (isSeller && status === 'IN_TRADING') {
+          counterpartyPhone = await auth.fetchUserPhone(rowBuyerId)
+          counterpartyPhoneLabel = '发布者手机号'
+        }
+      } else if (status === 'IN_TRADING' || status === 'SHIPPED') {
+        // 卖家确认订单后（IN_TRADING）双方才能互相看到完整手机号
+        if (isBuyer) {
+          counterpartyPhone = await auth.fetchUserPhone(rowSellerId)
+          counterpartyPhoneLabel = '卖家手机号'
+        } else if (isSeller) {
+          counterpartyPhone = await auth.fetchUserPhone(rowBuyerId)
+          counterpartyPhoneLabel = '买家手机号'
+        }
+      }
 
       const statusMap = postType === 'errand' ? ERRAND_STATUS_MAP : STATUS_MAP
       const itemImage = await cloudImage.resolveOrderItemImage(row)
@@ -361,7 +392,9 @@ Page({
         reviews,
         showDispute,
         payExpireAt,
-        countdown
+        countdown,
+        counterpartyPhone,
+        counterpartyPhoneLabel
       })
       this.loadedOnce = true
     } catch (e) {
@@ -384,6 +417,12 @@ Page({
         this.autoCancelOrder(this.data.order.objectId)
       }
     }
+  },
+
+  onCopyCounterpartyPhone() {
+    const phone = this.data.counterpartyPhone
+    if (!phone) return
+    wx.setClipboardData({ data: phone, success: () => util.showToast('已复制', 'success') })
   },
 
   formatCountdown(ms) {
@@ -905,6 +944,16 @@ Page({
     })
   },
 
+  async repairCompletedOrderCredit(order, reviews = []) {
+    if (!order || !order.objectId || order.status !== 'COMPLETED') return
+    await credit.rewardOrderComplete(order)
+    for (const row of (reviews || [])) {
+      if (row && row.revieweeId && row.rating) {
+        await credit.rewardReview(row.revieweeId, row.rating, order.objectId)
+      }
+    }
+  },
+
   // ------------------- 关联跑腿子订单 -------------------
   async onRequestErrand() {
     if (!auth.guardCampusAction({ tip: '完成校园认证后可申请跑腿配送' })) return
@@ -930,14 +979,14 @@ Page({
       const blockedTag = `\n[blockedUsers:${orderBuyerId},${orderSellerId}]`
 
       // 创建跑腿子任务（ON_SALE，骑手可见，存入 Errand 表）
+      // 不重复写 postType/category：这两个字段已在 Errand 表 schema 中存在，
+      // 关联跑腿不需要重新占用新列，避免触发 Bmob 1004 字段数上限错误
       const errandRow = Bmob.Query('Errand')
       errandRow.set('sellerId', u.objectId)
-      errandRow.set('postType', publish.POST_TYPE.ERRAND)
       errandRow.set('status', 'ON_SALE')
       errandRow.set('title', `跑腿配送 · ${order.itemTitle || '交易商品'}`)
       errandRow.set('description', `来自交易订单的跑腿配送需求，跑腿费由${payerLabel}支付，请与发布者沟通取件和送达地址。${blockedTag}`)
       errandRow.set('price', 0)
-      errandRow.set('category', '跑腿')
       errandRow.set('errandCategory', '其他跑腿')
       errandRow.set('images', '[]')
       errandRow.set('linkedOrderId', order.objectId)

@@ -8,6 +8,8 @@ Page({
   data: {
     editId: '',
     rectifyRequired: false,
+    adminOfflineRectify: false,
+    relistPendingReview: false,
     rectifyReason: '',
     categories: publish.GOODS_CATEGORIES,
     categoryIndex: 0,
@@ -36,6 +38,16 @@ Page({
       actionName: '发布物品'
     })) {
       setTimeout(() => wx.navigateBack(), 300)
+      return
+    }
+    if (!auth.checkPhoneSet()) {
+      wx.showModal({
+        title: '手机号必填',
+        content: '发布物品需要手机号供买家联系，请先完善个人信息',
+        confirmText: '去填写',
+        showCancel: false,
+        success: () => wx.redirectTo({ url: '/pages/my/mySetting/mySetting' })
+      })
       return
     }
     this.initCategories()
@@ -91,6 +103,8 @@ Page({
       const categoryIndex = Math.max(0, publish.GOODS_CATEGORIES.indexOf(cat))
       const rectifyRequired = !!(row.rectifyRequired && row.status === 'OFFLINE')
       this._rectifyRequired = rectifyRequired
+      this._reportRectify = false
+      this._adminOfflineRectify = false
       this._rawImages = rawImages
       this._rectifySnapshot = {
         title: (row.title || '').trim(),
@@ -99,19 +113,31 @@ Page({
         category: cat
       }
       let rectifyReason = ''
+      let adminOfflineRectify = false
+      let relistPendingReview = false
       if (rectifyRequired) {
         rectifyReason = row.rectifyReason || ''
       } else if (row.status === 'OFFLINE') {
         const itemRectify = require('../../utils/itemRectify.js')
-        const info = await itemRectify.getRectifyInfoForItem(id)
-        if (info) {
+        const reportInfo = await itemRectify.getRectifyInfoForItem(id)
+        const adminInfo = await itemRectify.getAdminOfflineInfoForItem(id)
+        if (reportInfo) {
           this._rectifyRequired = true
-          rectifyReason = info.reason || ''
+          this._reportRectify = true
+          rectifyReason = reportInfo.reason || ''
+        } else if (adminInfo) {
+          this._rectifyRequired = true
+          this._adminOfflineRectify = true
+          adminOfflineRectify = true
+          relistPendingReview = !!adminInfo.pendingReview
+          rectifyReason = adminInfo.reason || ''
         }
       }
       this.setData({
         categoryIndex,
         rectifyRequired: this._rectifyRequired,
+        adminOfflineRectify,
+        relistPendingReview,
         rectifyReason,
         form: {
           title: row.title || '',
@@ -223,11 +249,12 @@ Page({
   },
 
   updateCanSubmit() {
-    const { form, submitting } = this.data
+    const { form, submitting, relistPendingReview } = this.data
     const t = (form.title || '').trim()
     const d = (form.description || '').trim()
     const p = parseFloat(form.price)
     const ok =
+      !relistPendingReview &&
       t.length >= 2 &&
       t.length <= 40 &&
       d.length >= 5 &&
@@ -289,6 +316,10 @@ Page({
   },
 
   async onSubmit() {
+    if (this.data.relistPendingReview) {
+      util.showToast('已提交审核，请等待管理员通过')
+      return
+    }
     if (!auth.guardCampusAction({
       tip: '完成校园认证后可发布物品',
       creditGate: !this.data.editId,
@@ -306,7 +337,10 @@ Page({
     const imagesForSave = this.buildImagesForSave(form.images)
     const coverImage = imagesForSave[0]
     const imagesJson = JSON.stringify(imagesForSave)
-    const relistFields = this._rectifyRequired ? { status: 'ON_SALE' } : {}
+    const relistFields = {}
+    if (this._rectifyRequired && this._reportRectify) {
+      relistFields.status = 'ON_SALE'
+    }
 
     this.setData({ submitting: true })
     try {
@@ -324,11 +358,18 @@ Page({
         },
         editId || undefined
       )
-      util.hideLoading()
-      util.showToast(
-        this._rectifyRequired ? '整改完成，已重新上架' : editId ? '保存成功' : '发布成功',
-        'success'
-      )
+      if (this._adminOfflineRectify) {
+        const itemRectify = require('../../utils/itemRectify.js')
+        await itemRectify.markRelistPendingReview(editId)
+        util.hideLoading()
+        util.showToast('已提交审核，请等待管理员通过后上架', 'success')
+      } else {
+        util.hideLoading()
+        util.showToast(
+          this._rectifyRequired ? '整改完成，已重新上架' : editId ? '保存成功' : '发布成功',
+          'success'
+        )
+      }
       setTimeout(() => {
         if (editId) wx.navigateBack()
         else wx.redirectTo({ url: '/pages/my/myItems/myItems' })

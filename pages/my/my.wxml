@@ -60,6 +60,11 @@
       <text class="cell-text">购物车</text>
       <text class="cell-arrow">›</text>
     </view>
+    <view class="cell flex-row" bindtap="goMyBrowse" hover-class="cell-hover">
+      <view class="cell-icon icon-box icon-order-buy"></view>
+      <text class="cell-text">浏览记录</text>
+      <text class="cell-arrow">›</text>
+    </view>
     <view class="cell flex-row" bindtap="goCreditRecords" hover-class="cell-hover">
       <view class="cell-icon icon-box icon-credit"></view>
       <text class="cell-text">信用明细</text>

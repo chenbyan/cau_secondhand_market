@@ -4,6 +4,8 @@ const itemQuery = require('../../utils/publish.js')
 const sysConfig = require('../../utils/sysConfig.js')
 const campusPreference = require('../../utils/campusPreference.js')
 const orderNotify = require('../../utils/orderNotify.js')
+const itemHot = require('../../utils/itemHot.js')
+const Bmob = require('../../utils/bmob.js')
 
 const placeholder =
   'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
@@ -116,6 +118,13 @@ const SECTION_CONFIGS = [
     emptyText: '暂无物品'
   }
 ]
+
+const enrichHotItems = (items) =>
+  (items || []).map((item) => ({
+    ...item,
+    recommendType: getItemType(item),
+    recommendCampus: getItemCampus(item)
+  }))
 
 const WEATHER_PRESETS = [
   {
@@ -280,6 +289,8 @@ Page({
     selectedCampus: getInitialCampus(),
     recommendationNote: '',
     featuredItems: [],
+    hotDayItems: [],
+    hotMonthItems: [],
     sections: buildSections(),
     loading: true,
     weather: buildWeather(getInitialCampus()),
@@ -455,12 +466,12 @@ Page({
     }
   },
 
-  async loadHome() {
+  async loadHome(forceHot = false) {
     this.setData({ loading: true })
     try {
       const campus = this.data.selectedCampus || getInitialCampus()
       const pref = getPreference()
-      const [featured, ...sectionResults] = await Promise.all([
+      const homeResults = await Promise.all([
         itemQuery.fetchItems({
           type: itemQuery.TYPE_ALL,
           cursor: 0,
@@ -472,8 +483,22 @@ Page({
             cursor: 0,
             pageSize: 14
           })
-        )
+        ),
+        itemHot.fetchBrowseAggregates(forceHot)
       ])
+      const featured = homeResults[0]
+      const browseAgg = homeResults[homeResults.length - 1]
+      const sectionResults = homeResults.slice(1, -1)
+      const pool = itemHot.mergeItemPool([
+        featured.list,
+        ...sectionResults.map((r) => r.list)
+      ])
+      const hotDayItems = enrichHotItems(
+        itemHot.pickHotFromPool(pool, browseAgg.dayMap, 6)
+      )
+      const hotMonthItems = enrichHotItems(
+        itemHot.pickHotFromPool(pool, browseAgg.monthMap, 6)
+      )
       const itemsMap = {}
       SECTION_CONFIGS.forEach((section, index) => {
         itemsMap[section.key] = personalizeItems(
@@ -485,6 +510,8 @@ Page({
       })
       this.setData({
         featuredItems: personalizeItems(featured.list || [], pref, campus, 6),
+        hotDayItems,
+        hotMonthItems,
         sections: buildSections(itemsMap),
         recommendationNote: this.buildRecommendationNote(campus),
         loading: false
@@ -493,6 +520,8 @@ Page({
       console.error(e)
       this.setData({
         featuredItems: [],
+        hotDayItems: [],
+        hotMonthItems: [],
         sections: buildSections(),
         loading: false
       })
@@ -511,7 +540,7 @@ Page({
 
   async onPullDownRefresh() {
     this.refreshWeather()
-    await this.loadHome()
+    await this.loadHome(true)
     wx.stopPullDownRefresh()
   },
 

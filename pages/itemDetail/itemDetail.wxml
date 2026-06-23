@@ -4,7 +4,7 @@
       <image class="gallery-img" src="{{item}}" mode="aspectFill" binderror="onGalleryImageError" data-index="{{index}}" />
     </swiper-item>
   </swiper>
-  <view wx:if="{{soldOut}}" class="sold-mask flex-center">{{item.status === 'OFFLINE' ? '已取消' : '已结束'}}</view>
+  <view wx:if="{{soldOut}}" class="sold-mask flex-center">{{soldMaskText}}</view>
 
   <!-- 付款锁定提示 -->
   <view class="lock-scroll" wx:if="{{lockInfo}}">
@@ -42,17 +42,21 @@
     <text class="detail-price">{{item.priceLabel}} ¥ {{item.price}}</text>
     <text class="tag-info" wx:if="{{item.category && !item.isErrand}}">{{item.category}}</text>
 
-    <view wx:if="{{isOwner && isErrand}}" class="section card-flat contact-section">
+    <!-- 跑腿：发布者电话（接单前脱敏，接单后骑手可见完整号码） -->
+    <view wx:if="{{isErrand && sellerPhone}}" class="section card-flat contact-section">
       <text class="section-title">联系信息</text>
-      <view class="info-line" wx:if="{{contactPhone}}">
-        <text class="info-k">我的电话</text>
-        <text class="phone-val" bindtap="onCopyPhone" data-phone="{{contactPhone}}">{{contactPhone}}</text>
-        <text class="copy-hint">点击复制</text>
+      <view class="info-line">
+        <text class="info-k">{{isOwner ? '我的电话' : '发布者电话'}}</text>
+        <text class="phone-val" bindtap="onCopyPhone" data-phone="{{sellerPhoneIsFull ? sellerPhone : ''}}">{{sellerPhone}}</text>
+        <text wx:if="{{sellerPhoneIsFull}}" class="copy-hint">点击复制</text>
+        <text wx:else class="phone-tip">接单后骑手可见完整号码</text>
       </view>
-      <view wx:if="{{hasRunner}}" class="runner-block">
-        <text class="runner-title">接单人</text>
+      <!-- 骑手信息（仅发布者可见） -->
+      <view wx:if="{{isOwner && hasRunner}}" class="runner-block">
+        <text class="runner-title">骑手联系方式</text>
         <view class="info-line">
-          <text class="info-k">昵称</text>{{runner.nickName}}
+          <text class="info-k">昵称</text>
+          <text>{{runner.nickName}}</text>
           <text wx:if="{{runner.creditText}}" class="text-caption credit-caption {{runner.creditTone}}"> · {{runner.creditText}}</text>
         </view>
         <view class="info-line" wx:if="{{runner.phone}}">
@@ -61,11 +65,31 @@
           <text class="copy-hint">点击复制</text>
         </view>
         <view class="info-line" wx:if="{{runner.wechatId}}">
-          <text class="info-k">微信</text>{{runner.wechatId}}
+          <text class="info-k">微信</text>
+          <text>{{runner.wechatId}}</text>
         </view>
       </view>
-      <view wx:elif="{{item.status === 'IN_TRADING'}}" class="hint-muted">
-        已接单，接单人电话将在对方完善资料或创建订单后显示
+    </view>
+
+    <!-- 普通商品：卖家电话（拍下前脱敏，拍下后买家可见完整号码） -->
+    <view wx:if="{{!isErrand && sellerPhone}}" class="section card-flat contact-section">
+      <text class="section-title">卖家联系方式</text>
+      <view class="info-line">
+        <text class="info-k">手机号</text>
+        <text class="phone-val" bindtap="onCopyPhone" data-phone="{{sellerPhoneIsFull ? sellerPhone : ''}}">{{sellerPhone}}</text>
+        <text wx:if="{{sellerPhoneIsFull}}" class="copy-hint">点击复制</text>
+        <text wx:else class="phone-tip">拍下后可见完整号码</text>
+      </view>
+    </view>
+
+    <!-- 普通商品卖家端：买家联系方式（卖家看到拍下买家的手机号） -->
+    <view wx:if="{{isOwner && !isErrand && buyerContactPhones.length}}" class="section card-flat contact-section">
+      <text class="section-title">买家联系方式</text>
+      <view class="info-line" wx:for="{{buyerContactPhones}}" wx:for-item="buyer" wx:key="buyerId">
+        <text class="info-k">{{buyer.nickName}}</text>
+        <text wx:if="{{buyer.phone}}" class="phone-val" bindtap="onCopyPhone" data-phone="{{buyer.phone}}">{{buyer.phone}}</text>
+        <text wx:if="{{buyer.phone}}" class="copy-hint">点击复制</text>
+        <text wx:else class="phone-tip">未设置手机号</text>
       </view>
     </view>
 

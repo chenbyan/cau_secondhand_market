@@ -58,7 +58,7 @@
           <block wx:if="{{item.status === 'OFFLINE'}}">
             <button wx:if="{{item.rectifyRequired && !item.isErrand}}" size="mini" class="btn-action" data-item="{{item}}" catchtap="onEdit">编辑整改</button>
             <button
-              wx:if="{{!item.rectifyRequired || item.isErrand}}"
+              wx:if="{{(!item.rectifyRequired && !item.relistPendingReview) || item.isErrand}}"
               size="mini"
               class="btn-action"
               data-id="{{item.objectId}}"

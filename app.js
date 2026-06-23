@@ -113,6 +113,16 @@ App({
       await util.showModal('账号受限', '您的账号状态异常，暂时无法使用该功能。')
       return false
     }
+    if (!auth.checkPhoneSet()) {
+      wx.showModal({
+        title: '请先填写手机号',
+        content: '交易联系需要手机号，请先完善个人信息',
+        confirmText: '去填写',
+        showCancel: false,
+        success: () => wx.navigateTo({ url: '/pages/my/mySetting/mySetting' })
+      })
+      return false
+    }
     return true
   },
 

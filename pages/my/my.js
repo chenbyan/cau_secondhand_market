@@ -2,6 +2,7 @@ const auth = require('../../utils/auth.js')
 const util = require('../../utils/util.js')
 const Bmob = require('../../utils/bmob.js')
 const cloudImage = require('../../utils/cloudImage.js')
+const credit = require('../../utils/credit.js')
 
 const defaultAvatar =
   'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
@@ -12,7 +13,7 @@ function normalizeCreditScore(user) {
 }
 
 function creditPercent(score) {
-  return Math.min(100, Math.max(0, score))
+  return Math.min(100, Math.max(0, Math.round(score / 500 * 100)))
 }
 
 function buildStatusText(loggedIn, user, score) {
@@ -25,22 +26,6 @@ function buildStatusText(loggedIn, user, score) {
   return '未认证 · 完成校园邮箱认证'
 }
 
-async function fetchLatestRecordScore(userId) {
-  if (!userId) return null
-  try {
-    const q = Bmob.Query('CreditRecord')
-    q.equalTo('userId', '==', userId)
-    q.order('-createdAt')
-    q.limit(1)
-    const rows = await q.find()
-    if (!rows || !rows.length || rows[0].afterScore == null) return null
-    const score = Number(rows[0].afterScore)
-    return Number.isFinite(score) ? score : null
-  } catch (e) {
-    console.warn('读取最新信用流水失败', e)
-    return null
-  }
-}
 
 Page({
   data: {
@@ -91,7 +76,9 @@ Page({
     const uid = user.objectId
     // 先展示缓存，再异步拉取，避免 tab 切换时长时间阻塞
     setTimeout(() => {
-      Bmob.User.updateStorage(uid)
+      credit.syncUserCredit(uid)
+        .catch((e) => console.warn('同步信用分失败', e))
+        .then(() => Bmob.User.updateStorage(uid))
         .then(async () => {
           auth.persistUserInfo(Bmob.User.current())
           getApp().syncGlobalUser()
@@ -104,8 +91,7 @@ Page({
               avatarDisplay = ''
             }
           }
-          const latestRecordScore = await fetchLatestRecordScore(uid)
-          const latestCreditScore = latestRecordScore == null ? normalizeCreditScore(latest) : latestRecordScore
+          const latestCreditScore = normalizeCreditScore(latest)
           page.setData({
             user: { ...latest, creditScore: latestCreditScore, avatarDisplay },
             loggedIn: true,
@@ -152,6 +138,11 @@ Page({
   async goMyCart() {
     if (!getApp().checkAndCampusVerified('完成校园认证后可使用购物车')) return
     wx.navigateTo({ url: '/pages/my/myCart/myCart' })
+  },
+
+  goMyBrowse() {
+    if (!getApp().checkAndCampusVerified('完成校园认证后可查看浏览记录')) return
+    wx.navigateTo({ url: '/pages/my/myBrowse/myBrowse' })
   },
 
   async goOrdersBuy() {

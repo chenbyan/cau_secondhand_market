@@ -217,7 +217,8 @@ Page({
         .filter((r) => (r.status || '') === 'OFFLINE')
         .map((r) => r.objectId)
       const rectifyMap = await itemRectify.fetchPendingRectifyMap(offlineIds)
-      const items = await this.mapRowsToItems(list, publishTab, rectifyMap)
+      const adminMap = await itemRectify.fetchAdminOfflineMap(offlineIds)
+      const items = await this.mapRowsToItems(list, publishTab, rectifyMap, adminMap)
       const merged = reset ? items : this.data.items.concat(items)
       this.setData({
         items: merged,
@@ -232,7 +233,7 @@ Page({
     }
   },
 
-  async mapRowsToItems(list, publishTab, rectifyMap = {}) {
+  async mapRowsToItems(list, publishTab, rectifyMap = {}, adminMap = {}) {
     const items = []
     for (let i = 0; i < (list || []).length; i++) {
       const row = list[i]
@@ -247,10 +248,13 @@ Page({
       const status = row.status || 'ON_SALE'
       const meta = itemStatus.getStatusMeta(postType, status)
       const goodsRectify = itemRectify.needsGoodsRectify(row, rectifyMap)
+      const adminOfflineRectify = itemRectify.needsAdminOfflineRectify(row, adminMap)
+      const relistPendingReview = itemRectify.isAdminRelistPendingReview(row, adminMap)
       const needsRectify = isErrand
         ? !!row.rectifyRequired && status === 'OFFLINE'
-        : goodsRectify
+        : goodsRectify || adminOfflineRectify
       const rectifyInfo = !isErrand && goodsRectify ? rectifyMap[row.objectId] : null
+      const adminInfo = !isErrand ? adminMap[row.objectId] : null
       let routeHint = ''
       if (isErrand && row.pickupAddr && row.deliveryAddr) {
         routeHint = `${row.pickupAddr} → ${row.deliveryAddr}`
@@ -271,10 +275,19 @@ Page({
         isErrand,
         fromLegacyItem: !!row.fromLegacyItem,
         priceLabel: isErrand ? '赏金' : '价格',
-        statusLabel: needsRectify ? '已取消 · 待整改' : meta.label,
+        statusLabel: relistPendingReview
+          ? '已下架 · 待审核'
+          : needsRectify
+            ? '已下架 · 待整改'
+            : meta.label,
         statusClass: meta.cls,
         rectifyRequired: needsRectify,
-        rectifyReason: rectifyInfo ? rectifyInfo.reason : (row.rectifyReason || ''),
+        relistPendingReview,
+        rectifyReason: rectifyInfo
+          ? rectifyInfo.reason
+          : adminInfo
+            ? adminInfo.reason
+            : (row.rectifyReason || ''),
         routeHint,
         canEdit: isErrand ? status === 'ON_SALE' : status === 'ON_SALE',
         createdAtText: row.createdAt ? util.formatTime(row.createdAt) : ''
@@ -363,6 +376,10 @@ Page({
     }
     const id = e.currentTarget.dataset.id
     const item = this.data.items.find((x) => x.objectId === id)
+    if (item && item.relistPendingReview) {
+      util.showToast('已提交审核，请等待管理员通过')
+      return
+    }
     if (item && item.rectifyRequired && !item.isErrand) {
       util.showToast('该商品需先编辑整改后再上架')
       return
